@@ -1,0 +1,21 @@
+netty (1:3.1.0.CR1-1) unstable; urgency=low
+
+  * Port package to pkg-java based largely on existing Ubuntu package
+  * Pull sources from svn to build orig tarball avoiding DFSG non-compliance
+  * debian/copyright, debian/README.source: Update to reflect DFSG-compliant
+    packaging.
+
+ -- Chris Grzegorczyk <grze@eucalyptus.com>  Thu, 17 Dec 2009 03:12:31 -0800
+
+netty (3.1.0.CR1+dfsg-0ubuntu1) karmic; urgency=low
+
+  * Repackaged orig tarball to avoid shipping sourceless doc/ elements.
+  * debian/copyright, debian/README.source: Explain repacking.
+
+ -- Thierry Carrez <thierry.carrez@ubuntu.com>  Wed, 26 Aug 2009 15:13:13 +0200
+
+netty (3.1.0.CR1-0ubuntu1) karmic; urgency=low
+
+  * Initial release. New Eucalyptus dependency.
+
+ -- Thierry Carrez <thierry.carrez@ubuntu.com>  Tue, 21 Jul 2009 16:48:12 +0200

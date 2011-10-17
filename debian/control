@@ -1,0 +1,23 @@
+Source: netty
+Section: java
+Priority: optional
+Maintainer: Chris Grzegorczyk <grze@eucalyptus.com>
+DM-Upload-Allowed: yes
+Uploaders: Graziano Obertelli <graziano@eucalyptus.com>, Kyo Lee <kyo.lee@eucalyptus.com>
+XSBC-Original-Maintainer: Thierry Carrez <thierry.carrez@ubuntu.com>
+Build-Depends-Indep: default-jdk,
+  libcommons-logging-java,
+  liblog4j1.2-java,
+  libslf4j-java,
+  libservlet2.5-java
+Build-Depends: ant, debhelper (>= 5), cdbs (>= 0.4.5.3)
+Standards-Version: 3.8.3
+
+Package: libnetty-java
+Architecture: all
+Depends: default-jre-headless | java5-runtime-headless, ${misc:Depends}
+Description: Java NIO client/server socket framework
+ Netty is a Java NIO client/server framework which enables quick and easy
+ development of network applications such as protocol servers and clients.
+ It greatly simplifies and streamlines network programming such as TCP and UDP
+ socket server.

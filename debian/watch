@@ -1,0 +1,2 @@
+version=3
+http://anonsvn.jboss.org/repos/netty/tags/ netty-([0-9].*)/ debian debian/orig-tar.sh
