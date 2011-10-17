@@ -1,3 +1,9 @@
+netty (1:3.2.3.Final-1) unstable; urgency=low
+
+  * New upstream version
+
+ -- Zbigniew Jędrzejewski-Szmek <zbyszek@in.waw.pl>  Tue, 04 Oct 2011 16:29:16 +0200
+
 netty (1:3.1.0.CR1-1) unstable; urgency=low
 
   * Port package to pkg-java based largely on existing Ubuntu package

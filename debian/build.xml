@@ -21,7 +21,6 @@
             <exclude name="org/jboss/netty/channel/xnio/**"/>
             <exclude name="org/jboss/netty/container/**"/>
             <exclude name="org/jboss/netty/example/**"/>
-            <exclude name="org/jboss/netty/handler/codec/protobuf/**"/>
             <exclude name="org/jboss/netty/logging/JBossLogger*.java"/>
             <exclude name="org/jboss/netty/logging/OsgiLogger*.java"/>
         </javac>
