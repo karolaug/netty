@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.http;
 
@@ -26,67 +19,59 @@ import static org.jboss.netty.channel.Channels.*;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
-import java.net.URI;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.nio.channels.NotYetConnectedException;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.AbstractChannel;
+import org.jboss.netty.channel.ChannelException;
 import org.jboss.netty.channel.ChannelFactory;
 import org.jboss.netty.channel.ChannelFuture;
+import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
 import org.jboss.netty.channel.ChannelSink;
+import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.DefaultChannelPipeline;
 import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
 import org.jboss.netty.channel.socket.SocketChannel;
-import org.jboss.netty.channel.socket.SocketChannelConfig;
-import org.jboss.netty.handler.codec.frame.DelimiterBasedFrameDecoder;
-import org.jboss.netty.logging.InternalLogger;
-import org.jboss.netty.logging.InternalLoggerFactory;
-import org.jboss.netty.util.internal.LinkedTransferQueue;
+import org.jboss.netty.handler.codec.http.DefaultHttpChunk;
+import org.jboss.netty.handler.codec.http.DefaultHttpRequest;
+import org.jboss.netty.handler.codec.http.HttpChunk;
+import org.jboss.netty.handler.codec.http.HttpHeaders;
+import org.jboss.netty.handler.codec.http.HttpMethod;
+import org.jboss.netty.handler.codec.http.HttpRequest;
+import org.jboss.netty.handler.codec.http.HttpRequestEncoder;
+import org.jboss.netty.handler.codec.http.HttpResponse;
+import org.jboss.netty.handler.codec.http.HttpResponseDecoder;
+import org.jboss.netty.handler.codec.http.HttpResponseStatus;
+import org.jboss.netty.handler.codec.http.HttpVersion;
+import org.jboss.netty.handler.ssl.SslHandler;
 
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1412 $, $Date: 2009-06-18 01:20:57 -0700 (Thu, 18 Jun 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2285 $, $Date: 2010-05-27 14:02:49 +0200 (Thu, 27 May 2010) $
  */
 class HttpTunnelingClientSocketChannel extends AbstractChannel
         implements org.jboss.netty.channel.socket.SocketChannel {
 
-    static final InternalLogger logger =
-        InternalLoggerFactory.getInstance(HttpTunnelingClientSocketChannel.class);
+    final HttpTunnelingSocketChannelConfig config;
 
-    private final Lock reconnectLock = new ReentrantLock();
+    volatile boolean requestHeaderWritten;
 
-    volatile boolean awaitingInitialResponse = true;
-
-    private final Object writeLock = new Object();
     final Object interestOpsLock = new Object();
 
-    volatile Thread workerThread;
+    final SocketChannel realChannel;
 
-    String sessionId;
-
-    boolean closed = false;
-
-    LinkedTransferQueue<byte[]> messages = new LinkedTransferQueue<byte[]>();
-
-    private final ClientSocketChannelFactory clientSocketChannelFactory;
-
-    SocketChannel channel;
-
-    private final DelimiterBasedFrameDecoder handler = new DelimiterBasedFrameDecoder(8092, ChannelBuffers.wrappedBuffer(new byte[] { '\r', '\n' }));
-
-    private final HttpTunnelingClientSocketChannel.ServletChannelHandler servletHandler = new ServletChannelHandler();
-
-    private HttpTunnelAddress remoteAddress;
+    private final HttpTunnelingClientSocketChannel.ServletChannelHandler handler = new ServletChannelHandler();
 
     HttpTunnelingClientSocketChannel(
             ChannelFactory factory,
@@ -94,44 +79,50 @@ class HttpTunnelingClientSocketChannel extends AbstractChannel
             ChannelSink sink, ClientSocketChannelFactory clientSocketChannelFactory) {
 
         super(null, factory, pipeline, sink);
-        this.clientSocketChannelFactory = clientSocketChannelFactory;
 
+        config = new HttpTunnelingSocketChannelConfig(this);
         DefaultChannelPipeline channelPipeline = new DefaultChannelPipeline();
-        channelPipeline.addLast("DelimiterBasedFrameDecoder", handler);
-        channelPipeline.addLast("servletHandler", servletHandler);
-        channel = clientSocketChannelFactory.newChannel(channelPipeline);
+        channelPipeline.addLast("decoder", new HttpResponseDecoder());
+        channelPipeline.addLast("encoder", new HttpRequestEncoder());
+        channelPipeline.addLast("handler", handler);
+        realChannel = clientSocketChannelFactory.newChannel(channelPipeline);
 
         fireChannelOpen(this);
     }
 
-    public SocketChannelConfig getConfig() {
-        return channel.getConfig();
+    public HttpTunnelingSocketChannelConfig getConfig() {
+        return config;
     }
 
     public InetSocketAddress getLocalAddress() {
-        return channel.getLocalAddress();
+        return realChannel.getLocalAddress();
     }
 
     public InetSocketAddress getRemoteAddress() {
-        return channel.getRemoteAddress();
+        return realChannel.getRemoteAddress();
     }
 
     public boolean isBound() {
-        return channel.isOpen();
+        return realChannel.isBound();
     }
 
     public boolean isConnected() {
-        return channel.isConnected();
+        return realChannel.isConnected();
+    }
+
+    @Override
+    public int getInterestOps() {
+        return realChannel.getInterestOps();
+    }
+
+    @Override
+    public boolean isWritable() {
+        return realChannel.isWritable();
     }
 
     @Override
     protected boolean setClosed() {
         return super.setClosed();
-    }
-
-    @Override
-    protected void setInterestOpsNow(int interestOps) {
-        super.setInterestOpsNow(interestOps);
     }
 
     @Override
@@ -144,142 +135,268 @@ class HttpTunnelingClientSocketChannel extends AbstractChannel
         }
     }
 
-    void connectAndSendHeaders(boolean reconnect, HttpTunnelAddress remoteAddress) {
-        this.remoteAddress = remoteAddress;
-        URI url = remoteAddress.getUri();
-        if (reconnect) {
-            closeSocket();
-            DefaultChannelPipeline channelPipeline = new DefaultChannelPipeline();
-            channelPipeline.addLast("DelimiterBasedFrameDecoder", handler);
-            channelPipeline.addLast("servletHandler", servletHandler);
-            channel = clientSocketChannelFactory.newChannel(channelPipeline);
-        }
-        SocketAddress connectAddress = new InetSocketAddress(url.getHost(), url.getPort());
-        channel.connect(connectAddress).awaitUninterruptibly();
-        StringBuilder builder = new StringBuilder();
-        builder.append("POST ").append(url.getRawPath()).append(" HTTP/1.1").append(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR).
-                append("Host: ").append(url.getHost()).append(":").append(url.getPort()).append(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR).
-                append("Content-Type: application/octet-stream").append(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR).append("Transfer-Encoding: chunked").
-                append(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR).append("Content-Transfer-Encoding: Binary").append(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR).append("Connection: Keep-Alive").
-                append(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR);
-        if (reconnect) {
-            builder.append("Cookie: JSESSIONID=").append(sessionId).append(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR);
-        }
-        builder.append(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR);
-        String msg = builder.toString();
-        channel.write(ChannelBuffers.copiedBuffer(msg, "ASCII"));
-    }
-
-    int sendChunk(ChannelBuffer a) {
-        int size = a.readableBytes();
-        String hex = Integer.toHexString(size) + HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR;
-
-        synchronized (writeLock) {
-            ChannelFuture future = channel.write(ChannelBuffers.wrappedBuffer(
-                    ChannelBuffers.copiedBuffer(hex, "ASCII"),
-                    a,
-                    ChannelBuffers.copiedBuffer(HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR, "ASCII")));
-            future.awaitUninterruptibly();
-        }
-
-        return size + hex.length() + HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR.length();
-    }
-
-    byte[] receiveChunk() {
-        byte[] buf = null;
-        try {
-            buf = messages.take();
-        }
-        catch (InterruptedException e) {
-            // Ignore
-        }
-        return buf;
-    }
-
-    void reconnect() throws Exception {
-        if (closed) {
-            throw new IllegalStateException("channel closed");
-        }
-        if (reconnectLock.tryLock()) {
-            try {
-                awaitingInitialResponse = true;
-                connectAndSendHeaders(true, remoteAddress);
-            } finally {
-                reconnectLock.unlock();
+    void bindReal(final SocketAddress localAddress, final ChannelFuture future) {
+        realChannel.bind(localAddress).addListener(new ChannelFutureListener() {
+            public void operationComplete(ChannelFuture f) {
+                if (f.isSuccess()) {
+                    future.setSuccess();
+                } else {
+                    future.setFailure(f.getCause());
+                }
             }
+        });
+    }
+
+    void connectReal(final SocketAddress remoteAddress, final ChannelFuture future) {
+        final SocketChannel virtualChannel = this;
+        realChannel.connect(remoteAddress).addListener(new ChannelFutureListener() {
+            public void operationComplete(ChannelFuture f) {
+                final String serverName = config.getServerName();
+                final int serverPort = ((InetSocketAddress) remoteAddress).getPort();
+                final String serverPath = config.getServerPath();
+
+                if (f.isSuccess()) {
+                    // Configure SSL
+                    SSLContext sslContext = config.getSslContext();
+                    ChannelFuture sslHandshakeFuture = null;
+                    if (sslContext != null) {
+                        // Create a new SSLEngine from the specified SSLContext.
+                        SSLEngine engine;
+                        if (serverName != null) {
+                            engine = sslContext.createSSLEngine(serverName, serverPort);
+                        } else {
+                            engine = sslContext.createSSLEngine();
+                        }
+
+                        // Configure the SSLEngine.
+                        engine.setUseClientMode(true);
+                        engine.setEnableSessionCreation(config.isEnableSslSessionCreation());
+                        String[] enabledCipherSuites = config.getEnabledSslCipherSuites();
+                        if (enabledCipherSuites != null) {
+                            engine.setEnabledCipherSuites(enabledCipherSuites);
+                        }
+                        String[] enabledProtocols = config.getEnabledSslProtocols();
+                        if (enabledProtocols != null) {
+                            engine.setEnabledProtocols(enabledProtocols);
+                        }
+
+                        SslHandler sslHandler = new SslHandler(engine);
+                        realChannel.getPipeline().addFirst("ssl", sslHandler);
+                        sslHandshakeFuture = sslHandler.handshake();
+                    }
+
+                    // Send the HTTP request.
+                    final HttpRequest req = new DefaultHttpRequest(
+                            HttpVersion.HTTP_1_1, HttpMethod.POST, serverPath);
+                    if (serverName != null) {
+                        req.setHeader(HttpHeaders.Names.HOST, serverName);
+                    }
+                    req.setHeader(HttpHeaders.Names.CONTENT_TYPE, "application/octet-stream");
+                    req.setHeader(HttpHeaders.Names.TRANSFER_ENCODING, HttpHeaders.Values.CHUNKED);
+                    req.setHeader(HttpHeaders.Names.CONTENT_TRANSFER_ENCODING, HttpHeaders.Values.BINARY);
+                    req.setHeader(HttpHeaders.Names.USER_AGENT, HttpTunnelingClientSocketChannel.class.getName());
+
+                    if (sslHandshakeFuture == null) {
+                        realChannel.write(req);
+                        requestHeaderWritten = true;
+                        future.setSuccess();
+                        fireChannelConnected(virtualChannel, remoteAddress);
+                    } else {
+                        sslHandshakeFuture.addListener(new ChannelFutureListener() {
+                            public void operationComplete(ChannelFuture f) {
+                                if (f.isSuccess()) {
+                                    realChannel.write(req);
+                                    requestHeaderWritten = true;
+                                    future.setSuccess();
+                                    fireChannelConnected(virtualChannel, remoteAddress);
+                                } else {
+                                    future.setFailure(f.getCause());
+                                    fireExceptionCaught(virtualChannel, f.getCause());
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    future.setFailure(f.getCause());
+                    fireExceptionCaught(virtualChannel, f.getCause());
+                }
+            }
+        });
+    }
+
+    void writeReal(final ChannelBuffer a, final ChannelFuture future) {
+        if (!requestHeaderWritten) {
+            throw new NotYetConnectedException();
+        }
+
+        final int size = a.readableBytes();
+        final ChannelFuture f;
+
+        if (size == 0) {
+            f = realChannel.write(ChannelBuffers.EMPTY_BUFFER);
         } else {
-            try {
-                reconnectLock.lock();
-            } finally {
-                reconnectLock.unlock();
+            f = realChannel.write(new DefaultHttpChunk(a));
+        }
+
+        f.addListener(new ChannelFutureListener() {
+            public void operationComplete(ChannelFuture f) {
+                if (f.isSuccess()) {
+                    future.setSuccess();
+                    if (size != 0) {
+                        fireWriteComplete(HttpTunnelingClientSocketChannel.this, size);
+                    }
+                } else {
+                    future.setFailure(f.getCause());
+                }
             }
+        });
+    }
+
+    private ChannelFuture writeLastChunk() {
+        if (!requestHeaderWritten) {
+            throw new NotYetConnectedException();
+        } else {
+            return realChannel.write(HttpChunk.LAST_CHUNK);
         }
     }
 
-    void closeSocket() {
-        if (setClosed()) {
-            // Send the end of chunk.
-            synchronized (writeLock) {
-                ChannelFuture future = channel.write(ChannelBuffers.copiedBuffer(
-                        "0" +
-                        HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR +
-                        HttpTunnelingClientSocketPipelineSink.LINE_TERMINATOR,
-                        "ASCII"));
-                future.awaitUninterruptibly();
+    void setInterestOpsReal(final int interestOps, final ChannelFuture future) {
+        realChannel.setInterestOps(interestOps).addListener(new ChannelFutureListener() {
+            public void operationComplete(ChannelFuture f) {
+                if (f.isSuccess()) {
+                    future.setSuccess();
+                } else {
+                    future.setFailure(f.getCause());
+                }
             }
+        });
+    }
 
-            closed = true;
-            channel.close();
+    void disconnectReal(final ChannelFuture future) {
+        writeLastChunk().addListener(new ChannelFutureListener() {
+            public void operationComplete(ChannelFuture f) {
+                realChannel.disconnect().addListener(new ChannelFutureListener() {
+                    public void operationComplete(ChannelFuture f) {
+                        if (f.isSuccess()) {
+                            future.setSuccess();
+                        } else {
+                            future.setFailure(f.getCause());
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    void unbindReal(final ChannelFuture future) {
+        writeLastChunk().addListener(new ChannelFutureListener() {
+            public void operationComplete(ChannelFuture f) {
+                realChannel.unbind().addListener(new ChannelFutureListener() {
+                    public void operationComplete(ChannelFuture f) {
+                        if (f.isSuccess()) {
+                            future.setSuccess();
+                        } else {
+                            future.setFailure(f.getCause());
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    void closeReal(final ChannelFuture future) {
+        writeLastChunk().addListener(new ChannelFutureListener() {
+            public void operationComplete(ChannelFuture f) {
+                realChannel.close().addListener(new ChannelFutureListener() {
+                    public void operationComplete(ChannelFuture f) {
+                        // Note: If 'future' refers to the closeFuture,
+                        // setSuccess() and setFailure() do nothing.
+                        // AbstractChannel.setClosed() should be called instead.
+                        // (See AbstractChannel.ChannelCloseFuture)
+
+                        if (f.isSuccess()) {
+                            future.setSuccess();
+                        } else {
+                            future.setFailure(f.getCause());
+                        }
+
+                        // Notify the closeFuture.
+                        setClosed();
+                    }
+                });
+            }
+        });
+    }
+
+    final class ServletChannelHandler extends SimpleChannelUpstreamHandler {
+
+        private volatile boolean readingChunks;
+        final SocketChannel virtualChannel = HttpTunnelingClientSocketChannel.this;
+
+        @Override
+        public void channelBound(ChannelHandlerContext ctx, ChannelStateEvent e)
+                throws Exception {
+            fireChannelBound(virtualChannel, (SocketAddress) e.getValue());
         }
-    }
-
-    void bindSocket(SocketAddress localAddress) {
-        channel.bind(localAddress);
-    }
-
-    @ChannelPipelineCoverage("one")
-    class ServletChannelHandler extends SimpleChannelUpstreamHandler {
-        int nextChunkSize = -1;
 
         @Override
         public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-            ChannelBuffer buf = (ChannelBuffer) e.getMessage();
-            byte[] bytes = new byte[buf.readableBytes()];
-            buf.getBytes(0, bytes);
-            if (awaitingInitialResponse) {
-                String line = new String(bytes);
-                if (line.contains("Set-Cookie")) {
-                    int start = line.indexOf("JSESSIONID=") + 11;
-                    int end = line.indexOf(";", start);
-                    sessionId = line.substring(start, end);
+            if (!readingChunks) {
+                HttpResponse res = (HttpResponse) e.getMessage();
+                if (res.getStatus().getCode() != HttpResponseStatus.OK.getCode()) {
+                    throw new ChannelException("Unexpected HTTP response status: " + res.getStatus());
                 }
-                else if (line.equals("")) {
-                    awaitingInitialResponse = false;
-                }
-            }
-            else {
-                if(nextChunkSize == -1) {
-                    String hex = new String(bytes);
-                    nextChunkSize = Integer.parseInt(hex, 16);
-                    if(nextChunkSize == 0) {
-                        if(!closed) {
-                            nextChunkSize = -1;
-                            awaitingInitialResponse = true;
-                            reconnect();
-                        }
+
+                if (res.isChunked()) {
+                    readingChunks = true;
+                } else {
+                    ChannelBuffer content = res.getContent();
+                    if (content.readable()) {
+                        fireMessageReceived(HttpTunnelingClientSocketChannel.this, content);
                     }
+                    // Reached to the end of response - close the request.
+                    closeReal(succeededFuture(virtualChannel));
                 }
-                else {
-                    messages.put(bytes);
-                    nextChunkSize = -1;
+            } else {
+                HttpChunk chunk = (HttpChunk) e.getMessage();
+                if (!chunk.isLast()) {
+                    fireMessageReceived(HttpTunnelingClientSocketChannel.this, chunk.getContent());
+                } else {
+                    readingChunks = false;
+                    // Reached to the end of response - close the request.
+                    closeReal(succeededFuture(virtualChannel));
                 }
             }
+        }
+
+        @Override
+        public void channelInterestChanged(ChannelHandlerContext ctx,
+                ChannelStateEvent e) throws Exception {
+            fireChannelInterestChanged(virtualChannel);
+        }
+
+        @Override
+        public void channelDisconnected(ChannelHandlerContext ctx,
+                ChannelStateEvent e) throws Exception {
+            fireChannelDisconnected(virtualChannel);
+        }
+
+        @Override
+        public void channelUnbound(ChannelHandlerContext ctx,
+                ChannelStateEvent e) throws Exception {
+            fireChannelUnbound(virtualChannel);
+        }
+
+        @Override
+        public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
+                throws Exception {
+            fireChannelClosed(virtualChannel);
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
-            logger.warn("Unexpected exception", e.getCause());
-            channel.close();
+            fireExceptionCaught(virtualChannel, e.getCause());
+            realChannel.close();
         }
     }
 }

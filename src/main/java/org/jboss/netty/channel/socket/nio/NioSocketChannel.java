@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.nio;
 
@@ -39,22 +32,31 @@ import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelSink;
 import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.socket.nio.SocketSendBufferPool.SendBuffer;
 import org.jboss.netty.util.internal.LinkedTransferQueue;
 import org.jboss.netty.util.internal.ThreadLocalBoolean;
 
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1124 $, $Date: 2009-04-03 00:41:54 -0700 (Fri, 03 Apr 2009) $
+ * @version $Rev: 2202 $, $Date: 2010-02-23 08:18:58 +0100 (Tue, 23 Feb 2010) $
  *
  */
 class NioSocketChannel extends AbstractChannel
                                 implements org.jboss.netty.channel.socket.SocketChannel {
 
+    private static final int ST_OPEN = 0;
+    private static final int ST_BOUND = 1;
+    private static final int ST_CONNECTED = 2;
+    private static final int ST_CLOSED = -1;
+    private volatile int state = ST_OPEN;
+
     final SocketChannel socket;
     final NioWorker worker;
     private final NioSocketChannelConfig config;
+    private volatile InetSocketAddress localAddress;
+    private volatile InetSocketAddress remoteAddress;
 
     final Object interestOpsLock = new Object();
     final Object writeLock = new Object();
@@ -62,13 +64,14 @@ class NioSocketChannel extends AbstractChannel
     final Runnable writeTask = new WriteTask();
     final AtomicBoolean writeTaskInTaskQueue = new AtomicBoolean();
 
-    final Queue<MessageEvent> writeBuffer = new WriteBuffer();
+    final Queue<MessageEvent> writeBuffer = new WriteRequestQueue();
     final AtomicInteger writeBufferSize = new AtomicInteger();
     final AtomicInteger highWaterMarkCounter = new AtomicInteger();
-    volatile boolean inWriteNowLoop;
+    boolean inWriteNowLoop;
+    boolean writeSuspended;
 
     MessageEvent currentWriteEvent;
-    int currentWriteIndex;
+    SendBuffer currentWriteBuffer;
 
     public NioSocketChannel(
             Channel parent, ChannelFactory factory,
@@ -86,29 +89,61 @@ class NioSocketChannel extends AbstractChannel
     }
 
     public InetSocketAddress getLocalAddress() {
-        try {
-            return (InetSocketAddress) socket.socket().getLocalSocketAddress();
-        } catch (Throwable t) {
-            // Sometimes fails on a closed socket in Windows.
-            return null;
+        InetSocketAddress localAddress = this.localAddress;
+        if (localAddress == null) {
+            try {
+                this.localAddress = localAddress =
+                    (InetSocketAddress) socket.socket().getLocalSocketAddress();
+            } catch (Throwable t) {
+                // Sometimes fails on a closed socket in Windows.
+                return null;
+            }
         }
+        return localAddress;
     }
 
     public InetSocketAddress getRemoteAddress() {
-        try {
-            return (InetSocketAddress) socket.socket().getRemoteSocketAddress();
-        } catch (Throwable t) {
-            // Sometimes fails on a closed socket in Windows.
-            return null;
+        InetSocketAddress remoteAddress = this.remoteAddress;
+        if (remoteAddress == null) {
+            try {
+                this.remoteAddress = remoteAddress =
+                    (InetSocketAddress) socket.socket().getRemoteSocketAddress();
+            } catch (Throwable t) {
+                // Sometimes fails on a closed socket in Windows.
+                return null;
+            }
         }
+        return remoteAddress;
+    }
+
+    @Override
+    public boolean isOpen() {
+        return state >= ST_OPEN;
     }
 
     public boolean isBound() {
-        return isOpen() && socket.socket().isBound();
+        return state >= ST_BOUND;
     }
 
     public boolean isConnected() {
-        return isOpen() && socket.socket().isConnected();
+        return state == ST_CONNECTED;
+    }
+
+    final void setBound() {
+        assert state == ST_OPEN : "Invalid state: " + state;
+        state = ST_BOUND;
+    }
+
+    final void setConnected() {
+        if (state != ST_CLOSED) {
+            state = ST_CONNECTED;
+        }
+    }
+
+    @Override
+    protected boolean setClosed() {
+        state = ST_CLOSED;
+        return super.setClosed();
     }
 
     @Override
@@ -151,11 +186,6 @@ class NioSocketChannel extends AbstractChannel
     }
 
     @Override
-    protected boolean setClosed() {
-        return super.setClosed();
-    }
-
-    @Override
     public ChannelFuture write(Object message, SocketAddress remoteAddress) {
         if (remoteAddress == null || remoteAddress.equals(getRemoteAddress())) {
             return super.write(message, null);
@@ -164,11 +194,13 @@ class NioSocketChannel extends AbstractChannel
         }
     }
 
-    private final class WriteBuffer extends LinkedTransferQueue<MessageEvent> {
+    private final class WriteRequestQueue extends LinkedTransferQueue<MessageEvent> {
+
+        private static final long serialVersionUID = -246694024103520626L;
 
         private final ThreadLocalBoolean notifying = new ThreadLocalBoolean();
 
-        WriteBuffer() {
+        WriteRequestQueue() {
             super();
         }
 
@@ -177,7 +209,7 @@ class NioSocketChannel extends AbstractChannel
             boolean success = super.offer(e);
             assert success;
 
-            int messageSize = ((ChannelBuffer) e.getMessage()).readableBytes();
+            int messageSize = getMessageSize(e);
             int newWriteBufferSize = writeBufferSize.addAndGet(messageSize);
             int highWaterMark = getConfig().getWriteBufferHighWaterMark();
 
@@ -198,7 +230,7 @@ class NioSocketChannel extends AbstractChannel
         public MessageEvent poll() {
             MessageEvent e = super.poll();
             if (e != null) {
-                int messageSize = ((ChannelBuffer) e.getMessage()).readableBytes();
+                int messageSize = getMessageSize(e);
                 int newWriteBufferSize = writeBufferSize.addAndGet(-messageSize);
                 int lowWaterMark = getConfig().getWriteBufferLowWaterMark();
 
@@ -215,6 +247,14 @@ class NioSocketChannel extends AbstractChannel
             }
             return e;
         }
+
+        private int getMessageSize(MessageEvent e) {
+            Object m = e.getMessage();
+            if (m instanceof ChannelBuffer) {
+                return ((ChannelBuffer) m).readableBytes();
+            }
+            return 0;
+        }
     }
 
     private final class WriteTask implements Runnable {
@@ -225,7 +265,7 @@ class NioSocketChannel extends AbstractChannel
 
         public void run() {
             writeTaskInTaskQueue.set(false);
-            NioWorker.write(NioSocketChannel.this, false);
+            worker.writeFromTaskLoop(NioSocketChannel.this);
         }
     }
 }

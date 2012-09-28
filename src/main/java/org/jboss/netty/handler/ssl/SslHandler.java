@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.ssl;
 
@@ -35,9 +28,9 @@ import java.util.regex.Pattern;
 
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
-import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLEngineResult.Status;
+import javax.net.ssl.SSLException;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -52,11 +45,13 @@ import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.DownstreamMessageEvent;
 import org.jboss.netty.channel.ExceptionEvent;
+import org.jboss.netty.channel.LifeCycleAwareChannelHandler;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.handler.codec.frame.FrameDecoder;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
-import org.jboss.netty.util.internal.ImmediateExecutor;
+import org.jboss.netty.util.internal.LinkedTransferQueue;
+import org.jboss.netty.util.internal.NonReentrantLock;
 
 /**
  * Adds <a href="http://en.wikipedia.org/wiki/Transport_Layer_Security">SSL
@@ -66,20 +61,29 @@ import org.jboss.netty.util.internal.ImmediateExecutor;
  *
  * <h3>Beginning the handshake</h3>
  * <p>
- * A user should make sure not to write a message while the
- * {@linkplain #handshake(Channel) handshake} is in progress unless it is a
- * renegotiation.  You will be notified by the {@link ChannelFuture} which is
- * returned by the {@link #handshake(Channel)} method when the handshake
+ * You must make sure not to write a message while the
+ * {@linkplain #handshake() handshake} is in progress unless you are
+ * renegotiating.  You will be notified by the {@link ChannelFuture} which is
+ * returned by the {@link #handshake()} method when the handshake
  * process succeeds or fails.
  *
  * <h3>Renegotiation</h3>
  * <p>
- * Once the initial handshake is done successfully.  You can always call
- * {@link #handshake(Channel)} again to renegotiate the SSL session parameters.
+ * TLS renegotiation has been disabled by default due to a known security issue,
+ * <a href="http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2009-3555">CVE-2009-3555</a>.
+ * You can re-enable renegotiation by calling {@link #setEnableRenegotiation(boolean)}
+ * with {@code true} at your own risk.
+ * <p>
+ * If {@link #isEnableRenegotiation() enableRenegotiation} is {@code true} and
+ * the initial handshake has been done successfully, you can call
+ * {@link #handshake()} to trigger the renegotiation.
+ * <p>
+ * If {@link #isEnableRenegotiation() enableRenegotiation} is {@code false},
+ * an attempt to trigger renegotiation will result in the connection closure.
  *
  * <h3>Closing the session</h3>
  * <p>
- * To close the SSL session, the {@link #close(Channel)} method should be
+ * To close the SSL session, the {@link #close()} method should be
  * called to send the {@code close_notify} message to the remote peer.  One
  * exception is when you close the {@link Channel} - {@link SslHandler}
  * intercepts the close request and send the {@code close_notify} message
@@ -95,15 +99,51 @@ import org.jboss.netty.util.internal.ImmediateExecutor;
  * {@link SslHandler} with a new {@link SSLEngine} into the pipeline,
  * and start the handshake process as described in the first section.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * <h3>Implementing StartTLS</h3>
+ * <p>
+ * <a href="http://en.wikipedia.org/wiki/STARTTLS">StartTLS</a> is the
+ * communication pattern that secures the wire in the middle of the plaintext
+ * connection.  Please note that it is different from SSL &middot; TLS, that
+ * secures the wire from the beginning of the connection.  Typically, StartTLS
+ * is composed of three steps:
+ * <ol>
+ * <li>Client sends a StartTLS request to server.</li>
+ * <li>Server sends a StartTLS response to client.</li>
+ * <li>Client begins SSL handshake.</li>
+ * </ol>
+ * If you implement a server, you need to:
+ * <ol>
+ * <li>create a new {@link SslHandler} instance with {@code startTls} flag set
+ *     to {@code true},</li>
+ * <li>insert the {@link SslHandler} to the {@link ChannelPipeline}, and</li>
+ * <li>write a StartTLS response.</li>
+ * </ol>
+ * Please note that you must insert {@link SslHandler} <em>before</em> sending
+ * the StartTLS response.  Otherwise the client can send begin SSL handshake
+ * before {@link SslHandler} is inserted to the {@link ChannelPipeline}, causing
+ * data corruption.
+ * <p>
+ * The client-side implementation is much simpler.
+ * <ol>
+ * <li>Write a StartTLS request,</li>
+ * <li>wait for the StartTLS response,</li>
+ * <li>create a new {@link SslHandler} instance with {@code startTls} flag set
+ *     to {@code false},</li>
+ * <li>insert the {@link SslHandler} to the {@link ChannelPipeline}, and</li>
+ * <li>Initiate SSL handshake by calling {@link SslHandler#handshake()}.</li>
+ * </ol>
  *
- * @version $Rev: 1325 $, $Date: 2009-06-04 01:48:51 -0700 (Thu, 04 Jun 2009) $
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ *
+ * @version $Rev: 2369 $, $Date: 2010-10-19 06:05:28 +0200 (Tue, 19 Oct 2010) $
  *
  * @apiviz.landmark
  * @apiviz.uses org.jboss.netty.handler.ssl.SslBufferPool
  */
-public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler {
+public class SslHandler extends FrameDecoder
+                        implements ChannelDownstreamHandler,
+                                   LifeCycleAwareChannelHandler {
 
     private static final InternalLogger logger =
         InternalLoggerFactory.getInstance(SslHandler.class);
@@ -127,13 +167,15 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
         return defaultBufferPool;
     }
 
+    private volatile ChannelHandlerContext ctx;
     private final SSLEngine engine;
     private final SslBufferPool bufferPool;
     private final Executor delegatedTaskExecutor;
     private final boolean startTls;
 
+    private volatile boolean enableRenegotiation;
+
     final Object handshakeLock = new Object();
-    private boolean initialHandshake;
     private boolean handshaking;
     private volatile boolean handshaken;
     private volatile ChannelFuture handshakeFuture;
@@ -143,7 +185,8 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
     int ignoreClosedChannelException;
     final Object ignoreClosedChannelExceptionLock = new Object();
     private final Queue<PendingWrite> pendingUnencryptedWrites = new LinkedList<PendingWrite>();
-    private final Queue<MessageEvent> pendingEncryptedWrites = new LinkedList<MessageEvent>();
+    private final Queue<MessageEvent> pendingEncryptedWrites = new LinkedTransferQueue<MessageEvent>();
+    private final NonReentrantLock pendingEncryptedWritesLock = new NonReentrantLock();
 
     /**
      * Creates a new instance.
@@ -278,35 +321,80 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
      * @return a {@link ChannelFuture} which is notified when the handshake
      *         succeeds or fails.
      */
-    public ChannelFuture handshake(Channel channel) throws SSLException {
+    public ChannelFuture handshake() {
+        if (handshaken && !isEnableRenegotiation()) {
+            throw new IllegalStateException("renegotiation disabled");
+        }
+
+        ChannelHandlerContext ctx = this.ctx;
+        Channel channel = ctx.getChannel();
         ChannelFuture handshakeFuture;
         synchronized (handshakeLock) {
             if (handshaking) {
                 return this.handshakeFuture;
             } else {
-                engine.beginHandshake();
-                runDelegatedTasks();
-                handshakeFuture = this.handshakeFuture = newHandshakeFuture(channel);
                 handshaking = true;
+                try {
+                    engine.beginHandshake();
+                    runDelegatedTasks();
+                    handshakeFuture = this.handshakeFuture = future(channel);
+                } catch (SSLException e) {
+                    handshakeFuture = this.handshakeFuture = failedFuture(channel, e);
+                }
             }
         }
 
-        wrapNonAppData(context(channel), channel);
+        try {
+            wrapNonAppData(ctx, channel);
+        } catch (SSLException e) {
+            handshakeFuture.setFailure(e);
+        }
         return handshakeFuture;
+    }
+
+    /**
+     * @deprecated Use {@link #handshake()} instead.
+     */
+    @Deprecated
+    public ChannelFuture handshake(@SuppressWarnings("unused") Channel channel) {
+        return handshake();
     }
 
     /**
      * Sends an SSL {@code close_notify} message to the specified channel and
      * destroys the underlying {@link SSLEngine}.
      */
-    public ChannelFuture close(Channel channel) throws SSLException {
-        ChannelHandlerContext ctx = context(channel);
-        engine.closeOutbound();
-        return wrapNonAppData(ctx, channel);
+    public ChannelFuture close() {
+        ChannelHandlerContext ctx = this.ctx;
+        Channel channel = ctx.getChannel();
+        try {
+            engine.closeOutbound();
+            return wrapNonAppData(ctx, channel);
+        } catch (SSLException e) {
+            return failedFuture(channel, e);
+        }
     }
 
-    private ChannelHandlerContext context(Channel channel) {
-        return channel.getPipeline().getContext(getClass());
+    /**
+     * @deprecated Use {@link #close()} instead.
+     */
+    @Deprecated
+    public ChannelFuture close(@SuppressWarnings("unused") Channel channel) {
+        return close();
+    }
+
+    /**
+     * Returns {@code true} if and only if TLS renegotiation is enabled.
+     */
+    public boolean isEnableRenegotiation() {
+        return enableRenegotiation;
+    }
+
+    /**
+     * Enables or disables TLS renegotiation.
+     */
+    public void setEnableRenegotiation(boolean enableRenegotiation) {
+        this.enableRenegotiation = enableRenegotiation;
     }
 
     public void handleDownstream(
@@ -343,8 +431,13 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
 
         // Otherwise, all messages are encrypted.
         ChannelBuffer msg = (ChannelBuffer) e.getMessage();
-        PendingWrite pendingWrite =
-            new PendingWrite(evt.getFuture(), msg.toByteBuffer(msg.readerIndex(), msg.readableBytes()));
+        PendingWrite pendingWrite;
+
+        if (msg.readable()) {
+            pendingWrite = new PendingWrite(evt.getFuture(), msg.toByteBuffer(msg.readerIndex(), msg.readableBytes()));
+        } else {
+            pendingWrite = new PendingWrite(evt.getFuture(), null);
+        }
         synchronized (pendingUnencryptedWrites) {
             boolean offered = pendingUnencryptedWrites.offer(pendingWrite);
             assert offered;
@@ -420,34 +513,96 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
     @Override
     protected Object decode(
             final ChannelHandlerContext ctx, Channel channel, ChannelBuffer buffer) throws Exception {
-        if (buffer.readableBytes() < 2) {
+
+        if (buffer.readableBytes() < 5) {
             return null;
         }
 
-        int packetLength = buffer.getShort(buffer.readerIndex()) & 0xFFFF;
-        if ((packetLength & 0x8000) != 0) {
-            // Detected a SSLv2 packet
-            packetLength &= 0x7FFF;
-            packetLength += 2;
-        } else  if (buffer.readableBytes() < 5) {
-            return null;
-        } else {
-            // Detected a SSLv3 / TLSv1 packet
-            packetLength = (buffer.getShort(buffer.readerIndex() + 3) & 0xFFFF) + 5;
+        int packetLength = 0;
+
+        // SSLv3 or TLS - Check ContentType
+        boolean tls;
+        switch (buffer.getUnsignedByte(buffer.readerIndex())) {
+        case 20:  // change_cipher_spec
+        case 21:  // alert
+        case 22:  // handshake
+        case 23:  // application_data
+            tls = true;
+            break;
+        default:
+            // SSLv2 or bad data
+            tls = false;
         }
+
+        if (tls) {
+            // SSLv3 or TLS - Check ProtocolVersion
+            int majorVersion = buffer.getUnsignedByte(buffer.readerIndex() + 1);
+            if (majorVersion >= 3 && majorVersion < 10) {
+                // SSLv3 or TLS
+                packetLength = (buffer.getShort(buffer.readerIndex() + 3) & 0xFFFF) + 5;
+                if (packetLength <= 5) {
+                    // Neither SSLv2 or TLSv1 (i.e. SSLv2 or bad data)
+                    tls = false;
+                }
+            } else {
+                // Neither SSLv2 or TLSv1 (i.e. SSLv2 or bad data)
+                tls = false;
+            }
+        }
+
+        if (!tls) {
+            // SSLv2 or bad data - Check the version
+            boolean sslv2 = true;
+            int headerLength = (buffer.getUnsignedByte(
+                    buffer.readerIndex()) & 0x80) != 0 ? 2 : 3;
+            int majorVersion = buffer.getUnsignedByte(
+                    buffer.readerIndex() + headerLength + 1);
+            if (majorVersion >= 2 && majorVersion < 10) {
+                // SSLv2
+                if (headerLength == 2) {
+                    packetLength = (buffer.getShort(buffer.readerIndex()) & 0x7FFF) + 2;
+                } else {
+                    packetLength = (buffer.getShort(buffer.readerIndex()) & 0x3FFF) + 3;
+                }
+                if (packetLength <= headerLength) {
+                    sslv2 = false;
+                }
+            } else {
+                sslv2 = false;
+            }
+
+            if (!sslv2) {
+                // Bad data - discard the buffer and raise an exception.
+                SSLException e = new SSLException(
+                        "not an SSL/TLS record: " + ChannelBuffers.hexDump(buffer));
+                buffer.skipBytes(buffer.readableBytes());
+                throw e;
+            }
+        }
+
+        assert packetLength > 0;
 
         if (buffer.readableBytes() < packetLength) {
             return null;
         }
 
-        ChannelBuffer frame;
-        try {
-            frame = unwrap(ctx, channel, buffer, buffer.readerIndex(), packetLength);
-        } finally {
-            buffer.skipBytes(packetLength);
-        }
-
-        return frame;
+        // We advance the buffer's readerIndex before calling unwrap() because
+        // unwrap() can trigger FrameDecoder call decode(), this method, recursively.
+        // The recursive call results in decoding the same packet twice if
+        // the readerIndex is advanced *after* decode().
+        //
+        // Here's an example:
+        // 1) An SSL packet is received from the wire.
+        // 2) SslHandler.decode() deciphers the packet and calls the user code.
+        // 3) The user closes the channel in the same thread.
+        // 4) The same thread triggers a channelDisconnected() event.
+        // 5) FrameDecoder.cleanup() is called, and it calls SslHandler.decode().
+        // 6) SslHandler.decode() will feed the same packet with what was
+        //    deciphered at the step 2 again if the readerIndex was not advanced
+        //    before calling the user code.
+        final int packetOffset = buffer.readerIndex();
+        buffer.skipBytes(packetLength);
+        return unwrap(ctx, channel, buffer, packetOffset, packetLength);
     }
 
     private ChannelFuture wrap(ChannelHandlerContext context, Channel channel)
@@ -472,69 +627,75 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
                     }
 
                     ByteBuffer outAppBuf = pendingWrite.outAppBuf;
-                    SSLEngineResult result = null;
-                    try {
-                        synchronized (handshakeLock) {
-                            result = engine.wrap(outAppBuf, outNetBuf);
-                        }
-                    } finally {
-                        if (!outAppBuf.hasRemaining()) {
-                            pendingUnencryptedWrites.remove();
-                        }
-                    }
-
-                    if (result.bytesProduced() > 0) {
-                        outNetBuf.flip();
-                        msg = ChannelBuffers.buffer(outNetBuf.remaining());
-                        msg.writeBytes(outNetBuf.array(), 0, msg.capacity());
-                        outNetBuf.clear();
-
-                        if (pendingWrite.outAppBuf.hasRemaining()) {
-                            // pendingWrite's future shouldn't be notified if
-                            // only partial data is written.
-                            future = succeededFuture(channel);
-                        } else {
-                            future = pendingWrite.future;
-                        }
-
-                        MessageEvent encryptedWrite = new DownstreamMessageEvent(
-                                channel, future, msg, channel.getRemoteAddress());
-                        if (Thread.holdsLock(pendingEncryptedWrites)) {
-                            offered = pendingEncryptedWrites.offer(encryptedWrite);
-                        } else {
-                            synchronized (pendingEncryptedWrites) {
-                                offered = pendingEncryptedWrites.offer(encryptedWrite);
-                            }
-                        }
-                        assert offered;
+                    if (outAppBuf == null) {
+                        // A write request with an empty buffer
+                        pendingUnencryptedWrites.remove();
+                        offerEncryptedWriteRequest(
+                                new DownstreamMessageEvent(
+                                        channel, pendingWrite.future,
+                                        ChannelBuffers.EMPTY_BUFFER,
+                                        channel.getRemoteAddress()));
+                        offered = true;
                     } else {
-                        HandshakeStatus handshakeStatus = result.getHandshakeStatus();
-                        switch (handshakeStatus) {
-                        case NEED_WRAP:
-                            if (outAppBuf.hasRemaining()) {
-                                break;
+                        SSLEngineResult result = null;
+                        try {
+                            synchronized (handshakeLock) {
+                                result = engine.wrap(outAppBuf, outNetBuf);
+                            }
+                        } finally {
+                            if (!outAppBuf.hasRemaining()) {
+                                pendingUnencryptedWrites.remove();
+                            }
+                        }
+
+                        if (result.bytesProduced() > 0) {
+                            outNetBuf.flip();
+                            msg = ChannelBuffers.buffer(outNetBuf.remaining());
+                            msg.writeBytes(outNetBuf.array(), 0, msg.capacity());
+                            outNetBuf.clear();
+
+                            if (pendingWrite.outAppBuf.hasRemaining()) {
+                                // pendingWrite's future shouldn't be notified if
+                                // only partial data is written.
+                                future = succeededFuture(channel);
                             } else {
+                                future = pendingWrite.future;
+                            }
+
+                            MessageEvent encryptedWrite = new DownstreamMessageEvent(
+                                    channel, future, msg, channel.getRemoteAddress());
+                            offerEncryptedWriteRequest(encryptedWrite);
+                            offered = true;
+                        } else {
+                            final HandshakeStatus handshakeStatus = result.getHandshakeStatus();
+                            handleRenegotiation(handshakeStatus);
+                            switch (handshakeStatus) {
+                            case NEED_WRAP:
+                                if (outAppBuf.hasRemaining()) {
+                                    break;
+                                } else {
+                                    break loop;
+                                }
+                            case NEED_UNWRAP:
+                                needsUnwrap = true;
                                 break loop;
+                            case NEED_TASK:
+                                runDelegatedTasks();
+                                break;
+                            case FINISHED:
+                            case NOT_HANDSHAKING:
+                                if (handshakeStatus == HandshakeStatus.FINISHED) {
+                                    setHandshakeSuccess(channel);
+                                }
+                                if (result.getStatus() == Status.CLOSED) {
+                                    success = false;
+                                }
+                                break loop;
+                            default:
+                                throw new IllegalStateException(
+                                        "Unknown handshake status: " +
+                                        handshakeStatus);
                             }
-                        case NEED_UNWRAP:
-                            needsUnwrap = true;
-                            break loop;
-                        case NEED_TASK:
-                            runDelegatedTasks();
-                            break;
-                        case FINISHED:
-                        case NOT_HANDSHAKING:
-                            if (handshakeStatus == HandshakeStatus.FINISHED) {
-                                setHandshakeSuccess(channel);
-                            }
-                            if (result.getStatus() == Status.CLOSED) {
-                                success = false;
-                            }
-                            break loop;
-                        default:
-                            throw new IllegalStateException(
-                                    "Unknown handshake status: " +
-                                    result.getHandshakeStatus());
                         }
                     }
                 }
@@ -581,25 +742,32 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
         return future;
     }
 
+    private void offerEncryptedWriteRequest(MessageEvent encryptedWrite) {
+        final boolean locked = pendingEncryptedWritesLock.tryLock();
+        try {
+            pendingEncryptedWrites.offer(encryptedWrite);
+        } finally {
+            if (locked) {
+                pendingEncryptedWritesLock.unlock();
+            }
+        }
+    }
+
     private void flushPendingEncryptedWrites(ChannelHandlerContext ctx) {
         // Avoid possible dead lock and data integrity issue
         // which is caused by cross communication between more than one channel
         // in the same VM.
-        if (Thread.holdsLock(pendingEncryptedWrites)) {
+        if (!pendingEncryptedWritesLock.tryLock()) {
             return;
         }
 
-        synchronized (pendingEncryptedWrites) {
-            if (pendingEncryptedWrites.isEmpty()) {
-                return;
-            }
-        }
-
-        synchronized (pendingEncryptedWrites) {
+        try {
             MessageEvent e;
             while ((e = pendingEncryptedWrites.poll()) != null) {
                 ctx.sendDownstream(e);
             }
+        } finally {
+            pendingEncryptedWritesLock.unlock();
         }
     }
 
@@ -635,7 +803,9 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
                     write(ctx, future, msg);
                 }
 
-                switch (result.getHandshakeStatus()) {
+                final HandshakeStatus handshakeStatus = result.getHandshakeStatus();
+                handleRenegotiation(handshakeStatus);
+                switch (handshakeStatus) {
                 case FINISHED:
                     setHandshakeSuccess(channel);
                     runDelegatedTasks();
@@ -656,8 +826,7 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
                     break;
                 default:
                     throw new IllegalStateException(
-                            "Unexpected handshake status: " +
-                            result.getHandshakeStatus());
+                            "Unexpected handshake status: " + handshakeStatus);
                 }
 
                 if (result.bytesProduced() == 0) {
@@ -689,10 +858,10 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
             for (;;) {
                 SSLEngineResult result;
                 synchronized (handshakeLock) {
-                    if (initialHandshake && !engine.getUseClientMode() &&
+                    if (!handshaken && !handshaking &&
+                        !engine.getUseClientMode() &&
                         !engine.isInboundDone() && !engine.isOutboundDone()) {
-                        handshake(channel);
-                        initialHandshake = false;
+                        handshake();
                     }
 
                     try {
@@ -701,7 +870,9 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
                         throw e;
                     }
 
-                    switch (result.getHandshakeStatus()) {
+                    final HandshakeStatus handshakeStatus = result.getHandshakeStatus();
+                    handleRenegotiation(handshakeStatus);
+                    switch (handshakeStatus) {
                     case NEED_UNWRAP:
                         if (inNetBuf.hasRemaining() && !engine.isInboundDone()) {
                             break;
@@ -723,8 +894,7 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
                         break loop;
                     default:
                         throw new IllegalStateException(
-                                "Unknown handshake status: " +
-                                result.getHandshakeStatus());
+                                "Unknown handshake status: " + handshakeStatus);
                     }
                 }
             }
@@ -735,7 +905,11 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
                 // current thread, calling wrap() will lead to a dead lock
                 // i.e. pendingUnencryptedWrites -> handshakeLock vs.
                 //      handshakeLock -> pendingUnencryptedLock -> handshakeLock
-                if (!Thread.holdsLock(handshakeLock)) {
+                //
+                // There is also a same issue between pendingEncryptedWrites
+                // and pendingUnencryptedWrites.
+                if (!Thread.holdsLock(handshakeLock) &&
+                    !pendingEncryptedWritesLock.isHeldByCurrentThread()) {
                     wrap(ctx, channel);
                 }
             }
@@ -754,6 +928,57 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
             throw e;
         } finally {
             bufferPool.release(outAppBuf);
+        }
+    }
+
+    private void handleRenegotiation(HandshakeStatus handshakeStatus) {
+        if (handshakeStatus == HandshakeStatus.NOT_HANDSHAKING ||
+            handshakeStatus == HandshakeStatus.FINISHED) {
+            // Not handshaking
+            return;
+        }
+
+        if (!handshaken) {
+            // Not renegotiation
+            return;
+        }
+
+        final boolean renegotiate;
+        synchronized (handshakeLock) {
+            if (handshaking) {
+                // Renegotiation in progress or failed already.
+                // i.e. Renegotiation check has been done already below.
+                return;
+            }
+
+            if (engine.isInboundDone() || engine.isOutboundDone()) {
+                // Not handshaking but closing.
+                return;
+            }
+
+            if (isEnableRenegotiation()) {
+                // Continue renegotiation.
+                renegotiate = true;
+            } else {
+                // Do not renegotiate.
+                renegotiate = false;
+                // Prevent reentrance of this method.
+                handshaking = true;
+            }
+        }
+
+        if (renegotiate) {
+            // Renegotiate.
+            handshake();
+        } else {
+            // Raise an exception.
+            fireExceptionCaught(
+                    ctx, new SSLException(
+                            "renegotiation attempted by peer; " +
+                            "closing the connection"));
+
+            // Close the connection to stop renegotiation.
+            Channels.close(ctx, succeededFuture(ctx.getChannel()));
         }
     }
 
@@ -784,7 +1009,7 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
             handshaken = true;
 
             if (handshakeFuture == null) {
-                handshakeFuture = newHandshakeFuture(channel);
+                handshakeFuture = future(channel);
             }
         }
 
@@ -800,7 +1025,7 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
             handshaken = false;
 
             if (handshakeFuture == null) {
-                handshakeFuture = newHandshakeFuture(channel);
+                handshakeFuture = future(channel);
             }
         }
         handshakeFuture.setFailure(cause);
@@ -825,19 +1050,6 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
         }
 
         context.sendDownstream(e);
-    }
-
-    private static ChannelFuture newHandshakeFuture(Channel channel) {
-        ChannelFuture future = future(channel);
-        future.addListener(new ChannelFutureListener() {
-            public void operationComplete(ChannelFuture future)
-                    throws Exception {
-                if (!future.isSuccess()) {
-                    fireExceptionCaught(future.getChannel(), future.getCause());
-                }
-            }
-        });
-        return future;
     }
 
     private static final class PendingWrite {
@@ -866,5 +1078,21 @@ public class SslHandler extends FrameDecoder implements ChannelDownstreamHandler
                 Channels.close(context, e.getFuture());
             }
         }
+    }
+
+    public void beforeAdd(ChannelHandlerContext ctx) throws Exception {
+        this.ctx = ctx;
+    }
+
+    public void afterAdd(ChannelHandlerContext ctx) throws Exception {
+        // Unused
+    }
+
+    public void beforeRemove(ChannelHandlerContext ctx) throws Exception {
+        // Unused
+    }
+
+    public void afterRemove(ChannelHandlerContext ctx) throws Exception {
+        // Unused
     }
 }

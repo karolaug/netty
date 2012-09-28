@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.replay;
 
@@ -27,9 +20,11 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferFactory;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelHandler;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
+import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.ExceptionEvent;
@@ -48,11 +43,12 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  * availability of the required bytes.  For example, the following
  * {@link FrameDecoder} implementation:
  * <pre>
- * public class IntegerHeaderFrameDecoder extends FrameDecoder {
+ * public class IntegerHeaderFrameDecoder extends {@link FrameDecoder} {
  *
- *   protected Object decode(ChannelHandlerContext ctx,
- *                           Channel channel,
- *                           ChannelBuffer buf) throws Exception {
+ *   {@code @Override}
+ *   protected Object decode({@link ChannelHandlerContext} ctx,
+ *                           {@link Channel} channel,
+ *                           {@link ChannelBuffer} buf) throws Exception {
  *
  *     if (buf.readableBytes() &lt; 4) {
  *        return <strong>null</strong>;
@@ -73,12 +69,12 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  * is simplified like the following with {@link ReplayingDecoder}:
  * <pre>
  * public class IntegerHeaderFrameDecoder
- *      extends ReplayingDecoder&lt;VoidEnum&gt; {
+ *      extends {@link ReplayingDecoder}&lt;{@link VoidEnum}&gt; {
  *
- *   protected Object decode(ChannelHandlerContext ctx,
- *                           Channel channel,
- *                           ChannelBuffer buf,
- *                           VoidEnum state) throws Exception {
+ *   protected Object decode({@link ChannelHandlerContext} ctx,
+ *                           {@link Channel} channel,
+ *                           {@link ChannelBuffer} buf,
+ *                           {@link VoidEnum} state) throws Exception {
  *
  *     return buf.readBytes(buf.readInt());
  *   }
@@ -118,11 +114,12 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  * <li>You must keep in mind that {@code decode(..)} method can be called many
  *     times to decode a single message.  For example, the following code will
  *     not work:
- * <pre> public class MyDecoder extends ReplayingDecoder&lt;VoidEnum&gt; {
+ * <pre> public class MyDecoder extends {@link ReplayingDecoder}&lt;{@link VoidEnum}&gt; {
  *
  *   private final Queue&lt;Integer&gt; values = new LinkedList&lt;Integer&gt;();
  *
- *   public Object decode(.., ChannelBuffer buffer, ..) throws Exception {
+ *   {@code @Override}
+ *   public Object decode(.., {@link ChannelBuffer} buffer, ..) throws Exception {
  *
  *     // A message contains 2 integers.
  *     values.offer(buffer.readInt());
@@ -137,11 +134,12 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  *      The correct implementation looks like the following, and you can also
  *      utilize the 'checkpoint' feature which is explained in detail in the
  *      next section.
- * <pre> public class MyDecoder extends ReplayingDecoder&lt;VoidEnum&gt; {
+ * <pre> public class MyDecoder extends {@link ReplayingDecoder}&lt;{@link VoidEnum}&gt; {
  *
  *   private final Queue&lt;Integer&gt; values = new LinkedList&lt;Integer&gt;();
  *
- *   public Object decode(.., ChannelBuffer buffer, ..) throws Exception {
+ *   {@code @Override}
+ *   public Object decode(.., {@link ChannelBuffer} buffer, ..) throws Exception {
  *
  *     // Revert the state of the variable that might have been changed
  *     // since the last partial decode.
@@ -183,7 +181,7 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  * }
  *
  * public class IntegerHeaderFrameDecoder
- *      extends ReplayingDecoder&lt;<strong>MyDecoderState</strong>&gt; {
+ *      extends {@link ReplayingDecoder}&lt;<strong>MyDecoderState</strong>&gt; {
  *
  *   private int length;
  *
@@ -192,10 +190,11 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  *     <strong>super(MyDecoderState.READ_LENGTH);</strong>
  *   }
  *
- *   protected Object decode(ChannelHandlerContext ctx,
- *                           Channel channel,
- *                           ChannelBuffer buf,
- *                           MyDecoderState state) throws Exception {
+ *   {@code @Override}
+ *   protected Object decode({@link ChannelHandlerContext} ctx,
+ *                           {@link Channel} channel,
+ *                           {@link ChannelBuffer} buf,
+ *                           <b>MyDecoderState</b> state) throws Exception {
  *     switch (state) {
  *     case READ_LENGTH:
  *       length = buf.readInt();
@@ -216,15 +215,16 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  * An alternative way to manage the decoder state is to manage it by yourself.
  * <pre>
  * public class IntegerHeaderFrameDecoder
- *      extends ReplayingDecoder&lt;<strong>VoidEnum</strong>&gt; {
+ *      extends {@link ReplayingDecoder}&lt;<strong>{@link VoidEnum}</strong>&gt; {
  *
  *   <strong>private boolean readLength;</strong>
  *   private int length;
  *
- *   protected Object decode(ChannelHandlerContext ctx,
- *                           Channel channel,
- *                           ChannelBuffer buf,
- *                           MyDecoderState state) throws Exception {
+ *   {@code @Override}
+ *   protected Object decode({@link ChannelHandlerContext} ctx,
+ *                           {@link Channel} channel,
+ *                           {@link ChannelBuffer} buf,
+ *                           {@link VoidEnum} state) throws Exception {
  *     if (!readLength) {
  *       length = buf.readInt();
  *       <strong>readLength = true;</strong>
@@ -241,17 +241,57 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  * }
  * </pre>
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * <h3>Replacing a decoder with another decoder in a pipeline</h3>
+ * <p>
+ * If you are going to write a protocol multiplexer, you will probably want to
+ * replace a {@link ReplayingDecoder} (protocol detector) with another
+ * {@link ReplayingDecoder} or {@link FrameDecoder} (actual protocol decoder).
+ * It is not possible to achieve this simply by calling
+ * {@link ChannelPipeline#replace(ChannelHandler, String, ChannelHandler)}, but
+ * some additional steps are required:
+ * <pre>
+ * public class FirstDecoder extends {@link ReplayingDecoder}&lt;{@link VoidEnum}&gt; {
  *
- * @version $Rev: 1367 $, $Date: 2009-06-15 00:29:12 -0700 (Mon, 15 Jun 2009) $
+ *     public FirstDecoder() {
+ *         super(true); // Enable unfold
+ *     }
+ *
+ *     {@code @Override}
+ *     protected Object decode({@link ChannelHandlerContext} ctx,
+ *                             {@link Channel} ch,
+ *                             {@link ChannelBuffer} buf,
+ *                             {@link VoidEnum} state) {
+ *         ...
+ *         // Decode the first message
+ *         Object firstMessage = ...;
+ *
+ *         // Add the second decoder
+ *         ctx.getPipeline().addLast("second", new SecondDecoder());
+ *
+ *         // Remove the first decoder (me)
+ *         ctx.getPipeline().remove(this);
+ *
+ *         if (buf.readable()) {
+ *             // Hand off the remaining data to the second decoder
+ *             return new Object[] { firstMessage, buf.readBytes(<b>super.actualReadableBytes()</b>) };
+ *         } else {
+ *             // Nothing to hand off
+ *             return firstMessage;
+ *         }
+ *     }
+ * </pre>
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ *
+ * @version $Rev: 2358 $, $Date: 2010-08-30 08:03:31 +0200 (Mon, 30 Aug 2010) $
  *
  * @param <T>
  *        the state type; use {@link VoidEnum} if state management is unused
  *
  * @apiviz.landmark
+ * @apiviz.has org.jboss.netty.handler.codec.replay.UnreplayableOperationException oneway - - throws
  */
-@ChannelPipelineCoverage("one")
 public abstract class ReplayingDecoder<T extends Enum<T>>
         extends SimpleChannelUpstreamHandler {
 
@@ -259,9 +299,9 @@ public abstract class ReplayingDecoder<T extends Enum<T>>
     private final AtomicReference<ChannelBuffer> cumulation =
         new AtomicReference<ChannelBuffer>();
     private final boolean unfold;
-    private volatile ReplayingDecoderBuffer replayable;
-    private volatile T state;
-    private volatile int checkpoint;
+    private ReplayingDecoderBuffer replayable;
+    private T state;
+    private int checkpoint;
 
     /**
      * Creates a new instance with no initial state (i.e: {@code null}).
@@ -323,6 +363,29 @@ public abstract class ReplayingDecoder<T extends Enum<T>>
         T oldState = state;
         state = newState;
         return oldState;
+    }
+
+    /**
+     * Returns the actual number of readable bytes in the internal cumulative
+     * buffer of this decoder.  You usually do not need to rely on this value
+     * to write a decoder.  Use it only when you muse use it at your own risk.
+     * This method is a shortcut to {@link #internalBuffer() internalBuffer().readableBytes()}.
+     */
+    protected int actualReadableBytes() {
+        return internalBuffer().readableBytes();
+    }
+
+    /**
+     * Returns the internal cumulative buffer of this decoder.  You usually
+     * do not need to access the internal buffer directly to write a decoder.
+     * Use it only when you must use it at your own risk.
+     */
+    protected ChannelBuffer internalBuffer() {
+        ChannelBuffer buf = cumulation.get();
+        if (buf == null) {
+            return ChannelBuffers.EMPTY_BUFFER;
+        }
+        return buf;
     }
 
     /**
@@ -435,8 +498,9 @@ public abstract class ReplayingDecoder<T extends Enum<T>>
 
             if (oldReaderIndex == cumulation.readerIndex() && oldState == state) {
                 throw new IllegalStateException(
-                        "decode() method must consume at least one byte "
-                                + "if it returned a decoded message.");
+                        "decode() method must consume at least one byte " +
+                        "if it returned a decoded message (caused by: " +
+                        getClass() + ")");
             }
 
             // A successful decode

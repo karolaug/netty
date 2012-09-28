@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.example.discard;
 
@@ -26,17 +19,19 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
 
 import org.jboss.netty.bootstrap.ClientBootstrap;
-import org.jboss.netty.channel.ChannelFactory;
 import org.jboss.netty.channel.ChannelFuture;
+import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.ChannelPipelineFactory;
+import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 
 /**
  * Keeps sending random data to the specified address.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 647 $, $Date: 2009-01-07 04:06:47 -0800 (Wed, 07 Jan 2009) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  */
 public class DiscardClient {
 
@@ -50,10 +45,9 @@ public class DiscardClient {
         }
 
         // Parse options.
-        String host = args[0];
-        int port = Integer.parseInt(args[1]);
-        int firstMessageSize;
-
+        final String host = args[0];
+        final int port = Integer.parseInt(args[1]);
+        final int firstMessageSize;
         if (args.length == 3) {
             firstMessageSize = Integer.parseInt(args[2]);
         } else {
@@ -61,19 +55,18 @@ public class DiscardClient {
         }
 
         // Configure the client.
-        ChannelFactory factory =
-            new NioClientSocketChannelFactory(
-                    Executors.newCachedThreadPool(),
-                    Executors.newCachedThreadPool());
+        ClientBootstrap bootstrap = new ClientBootstrap(
+                new NioClientSocketChannelFactory(
+                        Executors.newCachedThreadPool(),
+                        Executors.newCachedThreadPool()));
 
-        ClientBootstrap bootstrap = new ClientBootstrap(factory);
-        DiscardClientHandler handler = new DiscardClientHandler(firstMessageSize);
-
-        //bootstrap.getPipeline().addLast("executor", new ExecutionHandler(new OrderedMemoryAwareThreadPoolExecutor(16, 0, 0)));
-        bootstrap.getPipeline().addLast("handler", handler);
-        bootstrap.setOption("tcpNoDelay", true);
-        bootstrap.setOption("keepAlive", true);
-        //bootstrap.setOption("bufferFactory", DirectChannelBufferFactory.getInstance());
+        // Set up the pipeline factory.
+        bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
+            public ChannelPipeline getPipeline() throws Exception {
+                return Channels.pipeline(
+                        new DiscardClientHandler(firstMessageSize));
+            }
+        });
 
         // Start the connection attempt.
         ChannelFuture future = bootstrap.connect(new InetSocketAddress(host, port));
@@ -82,6 +75,6 @@ public class DiscardClient {
         future.getChannel().getCloseFuture().awaitUninterruptibly();
 
         // Shut down thread pools to exit.
-        factory.releaseExternalResources();
+        bootstrap.releaseExternalResources();
     }
 }

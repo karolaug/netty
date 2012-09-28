@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.http;
 
@@ -35,16 +28,25 @@ import java.util.regex.Pattern;
  * Decodes an HTTP header value into {@link Cookie}s.  This decoder can decode
  * the HTTP cookie version 0, 1, and 2.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * <pre>
+ * {@link HttpRequest} req = ...;
+ * String value = req.getHeader("Cookie");
+ * Set&lt;{@link Cookie}&gt; cookies = new {@link CookieDecoder}().decode(value);
+ * </pre>
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2122 $, $Date: 2010-02-02 03:00:04 +0100 (Tue, 02 Feb 2010) $
  * @see CookieEncoder
+ *
+ * @apiviz.stereotype utility
+ * @apiviz.has        org.jboss.netty.handler.codec.http.Cookie oneway - - decodes
  */
 public class CookieDecoder {
 
     private final static Pattern PATTERN =
-        Pattern.compile("(?:\\s|[;,])*\\$*([^;=]+)(?:=(?:[\"']((?:\\\\.|[^\"])*)[\"']|([^;,]*)))?\\s*(?:[;,]+|$)");
+        Pattern.compile("(?:\\s|[;,])*\\$*([^;=]+)(?:=(?:[\"']((?:\\\\.|[^\"])*)[\"']|([^;,]*)))?(\\s*(?:[;,]+\\s*|$))");
 
     private final static String COMMA = ",";
 
@@ -61,43 +63,16 @@ public class CookieDecoder {
      * @return the decoded {@link Cookie}s
      */
     public Set<Cookie> decode(String header) {
-        Matcher m = PATTERN.matcher(header);
         List<String> names = new ArrayList<String>(8);
         List<String> values = new ArrayList<String>(8);
-        int pos = 0;
-        int version = 0;
-        while (m.find(pos)) {
-            pos = m.end();
-
-            // Extract name and value pair from the match.
-            String name = m.group(1);
-            String value = m.group(3);
-            if (value == null) {
-                value = decodeValue(m.group(2));
-            }
-
-            // An exceptional case:
-            // 'Expires' attribute can contain a comma without surrounded with quotes.
-            if (name.equalsIgnoreCase(CookieHeaderNames.EXPIRES) &&
-                value.length() <= 3) {
-                // value contains comma, but not surrounded with quotes.
-                if (m.find(pos)) {
-                    value = value + ", " + m.group(1);
-                    pos = m.end();
-                } else {
-                    continue;
-                }
-            }
-
-            names.add(name);
-            values.add(value);
-        }
+        extractKeyValuePairs(header, names, values);
 
         if (names.isEmpty()) {
             return Collections.emptySet();
         }
 
         int i;
+        int version = 0;
 
         // $Version is the only attribute that can appear before the actual
         // cookie name-value pair.
@@ -130,6 +105,7 @@ public class CookieDecoder {
 
             boolean discard = false;
             boolean secure = false;
+            boolean httpOnly = false;
             String comment = null;
             String commentURL = null;
             String domain = null;
@@ -145,6 +121,8 @@ public class CookieDecoder {
                     discard = true;
                 } else if (CookieHeaderNames.SECURE.equalsIgnoreCase(name)) {
                     secure = true;
+                } else if (CookieHeaderNames.HTTPONLY.equalsIgnoreCase(name)) {
+                   httpOnly = true;
                 } else if (CookieHeaderNames.COMMENT.equalsIgnoreCase(name)) {
                     comment = value;
                 } else if (CookieHeaderNames.COMMENTURL.equalsIgnoreCase(name)) {
@@ -190,6 +168,7 @@ public class CookieDecoder {
             c.setPath(path);
             c.setDomain(domain);
             c.setSecure(secure);
+            c.setHttpOnly(httpOnly);
             if (version > 0) {
                 c.setComment(comment);
             }
@@ -201,6 +180,55 @@ public class CookieDecoder {
         }
 
         return cookies;
+    }
+
+    private void extractKeyValuePairs(
+            String header, List<String> names, List<String> values) {
+        Matcher m = PATTERN.matcher(header);
+        int pos = 0;
+        String name = null;
+        String value = null;
+        String separator = null;
+        while (m.find(pos)) {
+            pos = m.end();
+
+            // Extract name and value pair from the match.
+            String newName = m.group(1);
+            String newValue = m.group(3);
+            if (newValue == null) {
+                newValue = decodeValue(m.group(2));
+            }
+            String newSeparator = m.group(4);
+
+            if (name == null) {
+                name = newName;
+                value = newValue == null? "" : newValue;
+                separator = newSeparator;
+                continue;
+            }
+
+            if (newValue == null &&
+                !CookieHeaderNames.DISCARD.equalsIgnoreCase(newName) &&
+                !CookieHeaderNames.SECURE.equalsIgnoreCase(newName) &&
+                !CookieHeaderNames.HTTPONLY.equalsIgnoreCase(newName)) {
+                value = value + separator + newName;
+                separator = newSeparator;
+                continue;
+            }
+
+            names.add(name);
+            values.add(value);
+
+            name = newName;
+            value = newValue;
+            separator = newSeparator;
+        }
+
+        // The last entry
+        if (name != null) {
+            names.add(name);
+            values.add(value);
+        }
     }
 
     private String decodeValue(String value) {

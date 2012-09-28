@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.buffer;
 
@@ -36,18 +29,17 @@ import java.nio.channels.ScatteringByteChannel;
  * recommended to use {@link ChannelBuffers#dynamicBuffer(int)} instead of
  * calling the constructor explicitly.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1017 $, $Date: 2009-03-11 23:40:36 -0700 (Wed, 11 Mar 2009) $
+ * @version $Rev: 2206 $, $Date: 2010-03-03 06:35:01 +0100 (Wed, 03 Mar 2010) $
  *
  */
 public class DynamicChannelBuffer extends AbstractChannelBuffer {
 
     private final ChannelBufferFactory factory;
-    private final int initialCapacity;
     private final ByteOrder endianness;
-    private ChannelBuffer buffer = ChannelBuffers.EMPTY_BUFFER;
+    private ChannelBuffer buffer;
 
     public DynamicChannelBuffer(int estimatedLength) {
         this(ByteOrder.BIG_ENDIAN, estimatedLength);
@@ -68,8 +60,30 @@ public class DynamicChannelBuffer extends AbstractChannelBuffer {
             throw new NullPointerException("factory");
         }
         this.factory = factory;
-        initialCapacity = estimatedLength;
         this.endianness = endianness;
+        buffer = factory.getBuffer(order(), estimatedLength);
+    }
+
+    @Override
+    public void ensureWritableBytes(int minWritableBytes) {
+        if (minWritableBytes <= writableBytes()) {
+            return;
+        }
+
+        int newCapacity;
+        if (capacity() == 0) {
+            newCapacity = 1;
+        } else {
+            newCapacity = capacity();
+        }
+        int minNewCapacity = writerIndex() + minWritableBytes;
+        while (newCapacity < minNewCapacity) {
+            newCapacity <<= 1;
+        }
+
+        ChannelBuffer newBuffer = factory().getBuffer(order(), newCapacity);
+        newBuffer.writeBytes(buffer, 0, writerIndex());
+        buffer = newBuffer;
     }
 
     public ChannelBufferFactory factory() {
@@ -80,8 +94,24 @@ public class DynamicChannelBuffer extends AbstractChannelBuffer {
         return endianness;
     }
 
+    public boolean isDirect() {
+        return buffer.isDirect();
+    }
+
     public int capacity() {
         return buffer.capacity();
+    }
+
+    public boolean hasArray() {
+        return buffer.hasArray();
+    }
+
+    public byte[] array() {
+        return buffer.array();
+    }
+
+    public int arrayOffset() {
+        return buffer.arrayOffset();
     }
 
     public byte getByte(int index) {
@@ -126,11 +156,11 @@ public class DynamicChannelBuffer extends AbstractChannelBuffer {
         buffer.getBytes(index, out, length);
     }
 
-    public void setByte(int index, byte value) {
+    public void setByte(int index, int value) {
         buffer.setByte(index, value);
     }
 
-    public void setShort(int index, short value) {
+    public void setShort(int index, int value) {
         buffer.setShort(index, value);
     }
 
@@ -169,13 +199,13 @@ public class DynamicChannelBuffer extends AbstractChannelBuffer {
     }
 
     @Override
-    public void writeByte(byte value) {
+    public void writeByte(int value) {
         ensureWritableBytes(1);
         super.writeByte(value);
     }
 
     @Override
-    public void writeShort(short value) {
+    public void writeShort(int value) {
         ensureWritableBytes(2);
         super.writeShort(value);
     }
@@ -262,33 +292,5 @@ public class DynamicChannelBuffer extends AbstractChannelBuffer {
 
     public ByteBuffer toByteBuffer(int index, int length) {
         return buffer.toByteBuffer(index, length);
-    }
-
-    public String toString(int index, int length, String charsetName) {
-        return buffer.toString(index, length, charsetName);
-    }
-
-    private void ensureWritableBytes(int requestedBytes) {
-        if (requestedBytes <= writableBytes()) {
-            return;
-        }
-
-        int newCapacity;
-        if (capacity() == 0) {
-            newCapacity = initialCapacity;
-            if (newCapacity == 0) {
-                newCapacity = 1;
-            }
-        } else {
-            newCapacity = capacity();
-        }
-        int minNewCapacity = writerIndex() + requestedBytes;
-        while (newCapacity < minNewCapacity) {
-            newCapacity <<= 1;
-        }
-
-        ChannelBuffer newBuffer = factory().getBuffer(order(), newCapacity);
-        newBuffer.writeBytes(buffer, 0, writerIndex());
-        buffer = newBuffer;
     }
 }

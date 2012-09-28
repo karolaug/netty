@@ -1,31 +1,29 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.http;
 
+import java.nio.charset.Charset;
+import java.util.List;
+
+import org.jboss.netty.util.CharsetUtil;
+
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  */
 class HttpCodecUtil {
     //space ' '
@@ -71,9 +69,108 @@ class HttpCodecUtil {
 
     static final byte DOUBLE_QUOTE = '"';
 
-    static final String DEFAULT_CHARSET = "UTF-8";
+    static final Charset DEFAULT_CHARSET = CharsetUtil.UTF_8;
 
     private HttpCodecUtil() {
         super();
+    }
+
+    static void validateHeaderName(String name) {
+        if (name == null) {
+            throw new NullPointerException("name");
+        }
+        for (int i = 0; i < name.length(); i ++) {
+            char c = name.charAt(i);
+            if (c > 127) {
+                throw new IllegalArgumentException(
+                        "name contains non-ascii character: " + name);
+            }
+
+            // Check prohibited characters.
+            switch (c) {
+            case '\t': case '\n': case 0x0b: case '\f': case '\r':
+            case ' ':  case ',':  case ':':  case ';':  case '=':
+                throw new IllegalArgumentException(
+                        "name contains one of the following prohibited characters: " +
+                        "=,;: \\t\\r\\n\\v\\f: " + name);
+            }
+        }
+    }
+
+    static void validateHeaderValue(String value) {
+        if (value == null) {
+            throw new NullPointerException("value");
+        }
+
+        // 0 - the previous character was neither CR nor LF
+        // 1 - the previous character was CR
+        // 2 - the previous character was LF
+        int state = 0;
+
+        for (int i = 0; i < value.length(); i ++) {
+            char c = value.charAt(i);
+
+            // Check the absolutely prohibited characters.
+            switch (c) {
+            case 0x0b: // Vertical tab
+                throw new IllegalArgumentException(
+                        "value contains a prohibited character '\\v': " + value);
+            case '\f':
+                throw new IllegalArgumentException(
+                        "value contains a prohibited character '\\f': " + value);
+            }
+
+            // Check the CRLF (HT | SP) pattern
+            switch (state) {
+            case 0:
+                switch (c) {
+                case '\r':
+                    state = 1;
+                    break;
+                case '\n':
+                    state = 2;
+                    break;
+                }
+                break;
+            case 1:
+                switch (c) {
+                case '\n':
+                    state = 2;
+                    break;
+                default:
+                    throw new IllegalArgumentException(
+                            "Only '\\n' is allowed after '\\r': " + value);
+                }
+                break;
+            case 2:
+                switch (c) {
+                case '\t': case ' ':
+                    state = 0;
+                    break;
+                default:
+                    throw new IllegalArgumentException(
+                            "Only ' ' and '\\t' are allowed after '\\n': " + value);
+                }
+            }
+        }
+
+        if (state != 0) {
+            throw new IllegalArgumentException(
+                    "value must not end with '\\r' or '\\n':" + value);
+        }
+    }
+
+    static boolean isTransferEncodingChunked(HttpMessage m) {
+        List<String> chunked = m.getHeaders(HttpHeaders.Names.TRANSFER_ENCODING);
+        if (chunked.isEmpty()) {
+            return false;
+        }
+
+        for (String v: chunked) {
+            if (v.equalsIgnoreCase(HttpHeaders.Values.CHUNKED)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

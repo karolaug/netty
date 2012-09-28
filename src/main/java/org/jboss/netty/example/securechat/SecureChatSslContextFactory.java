@@ -1,44 +1,58 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.example.securechat;
 
 import java.security.KeyStore;
 import java.security.Security;
 
+import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManager;
+
+import org.jboss.netty.handler.ssl.SslHandler;
 
 /**
  * Creates a bogus {@link SSLContext}.  A client-side context created by this
  * factory accepts any certificate even if it is invalid.  A server-side context
  * created by this factory sends a bogus certificate defined in {@link SecureChatKeyStore}.
- *
+ * <p>
  * You will have to create your context differently in a real world application.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * <h3>Client Certificate Authentication</h3>
  *
- * @version $Rev: 472 $, $Date: 2008-11-13 23:45:53 -0800 (Thu, 13 Nov 2008) $
+ * To enable client certificate authentication:
+ * <ul>
+ * <li>Enable client authentication on the server side by calling
+ *     {@link SSLEngine#setNeedClientAuth(boolean)} before creating
+ *     {@link SslHandler}.</li>
+ * <li>When initializing an {@link SSLContext} on the client side,
+ *     specify the {@link KeyManager} that contains the client certificate as
+ *     the first argument of {@link SSLContext#init(KeyManager[], javax.net.ssl.TrustManager[], java.security.SecureRandom)}.</li>
+ * <li>When initializing an {@link SSLContext} on the server side,
+ *     specify the proper {@link TrustManager} as the second argument of
+ *     {@link SSLContext#init(KeyManager[], javax.net.ssl.TrustManager[], java.security.SecureRandom)}
+ *     to validate the client certificate.</li>
+ * </ul>
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ *
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  */
 public class SecureChatSslContextFactory {
 
@@ -65,9 +79,7 @@ public class SecureChatSslContextFactory {
 
             // Initialize the SSLContext to work with our key managers.
             serverContext = SSLContext.getInstance(PROTOCOL);
-            serverContext.init(
-                    kmf.getKeyManagers(),
-                    SecureChatTrustManagerFactory.getTrustManagers(), null);
+            serverContext.init(kmf.getKeyManagers(), null, null);
         } catch (Exception e) {
             throw new Error(
                     "Failed to initialize the server-side SSLContext", e);
@@ -75,8 +87,7 @@ public class SecureChatSslContextFactory {
 
         try {
             clientContext = SSLContext.getInstance(PROTOCOL);
-            clientContext.init(
-                    null, SecureChatTrustManagerFactory.getTrustManagers(), null);
+            clientContext.init(null, SecureChatTrustManagerFactory.getTrustManagers(), null);
         } catch (Exception e) {
             throw new Error(
                     "Failed to initialize the client-side SSLContext", e);

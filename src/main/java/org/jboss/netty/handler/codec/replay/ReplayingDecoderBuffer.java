@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.replay;
 
@@ -29,16 +22,17 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
+import java.nio.charset.Charset;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferFactory;
 import org.jboss.netty.buffer.ChannelBufferIndexFinder;
 
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1317 $, $Date: 2009-06-03 20:10:53 -0700 (Wed, 03 Jun 2009) $
+ * @version $Rev: 2294 $, $Date: 2010-06-01 11:19:19 +0200 (Tue, 01 Jun 2010) $
  *
  */
 class ReplayingDecoderBuffer implements ChannelBuffer {
@@ -64,6 +58,22 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         }
     }
 
+    public boolean isDirect() {
+        return buffer.isDirect();
+    }
+
+    public boolean hasArray() {
+        return false;
+    }
+
+    public byte[] array() {
+        throw new UnsupportedOperationException();
+    }
+
+    public int arrayOffset() {
+        throw new UnsupportedOperationException();
+    }
+
     public void clear() {
         throw new UnreplayableOperationException();
     }
@@ -87,6 +97,10 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
     }
 
     public void discardReadBytes() {
+        throw new UnreplayableOperationException();
+    }
+
+    public void ensureWritableBytes(int writableBytes) {
         throw new UnreplayableOperationException();
     }
 
@@ -176,6 +190,21 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         return buffer.getUnsignedShort(index);
     }
 
+    public char getChar(int index) {
+        checkIndex(index, 2);
+        return buffer.getChar(index);
+    }
+
+    public float getFloat(int index) {
+        checkIndex(index, 4);
+        return buffer.getFloat(index);
+    }
+
+    public double getDouble(int index) {
+        checkIndex(index, 8);
+        return buffer.getDouble(index);
+    }
+
     @Override
     public int hashCode() {
         throw new UnreplayableOperationException();
@@ -196,6 +225,57 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
             throw REPLAY;
         }
         return endIndex;
+    }
+
+    public int bytesBefore(byte value) {
+        int bytes = buffer.bytesBefore(value);
+        if (bytes < 0) {
+            throw REPLAY;
+        }
+        return bytes;
+    }
+
+    public int bytesBefore(ChannelBufferIndexFinder indexFinder) {
+        int bytes = buffer.bytesBefore(indexFinder);
+        if (bytes < 0) {
+            throw REPLAY;
+        }
+        return bytes;
+    }
+
+    public int bytesBefore(int length, byte value) {
+        checkReadableBytes(length);
+        int bytes = buffer.bytesBefore(length, value);
+        if (bytes < 0) {
+            throw REPLAY;
+        }
+        return bytes;
+    }
+
+    public int bytesBefore(int length, ChannelBufferIndexFinder indexFinder) {
+        checkReadableBytes(length);
+        int bytes = buffer.bytesBefore(length, indexFinder);
+        if (bytes < 0) {
+            throw REPLAY;
+        }
+        return bytes;
+    }
+
+    public int bytesBefore(int index, int length, byte value) {
+        int bytes = buffer.bytesBefore(index, length, value);
+        if (bytes < 0) {
+            throw REPLAY;
+        }
+        return bytes;
+    }
+
+    public int bytesBefore(int index, int length,
+            ChannelBufferIndexFinder indexFinder) {
+        int bytes = buffer.bytesBefore(index, length, indexFinder);
+        if (bytes < 0) {
+            throw REPLAY;
+        }
+        return bytes;
     }
 
     public void markReaderIndex() {
@@ -263,6 +343,7 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         throw new UnreplayableOperationException();
     }
 
+    @Deprecated
     public ChannelBuffer readBytes(ChannelBufferIndexFinder endIndexFinder) {
         int endIndex = buffer.indexOf(buffer.readerIndex(), buffer.writerIndex(), endIndexFinder);
         if (endIndex < 0) {
@@ -281,6 +362,7 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         return buffer.readBytes(length);
     }
 
+    @Deprecated
     public ChannelBuffer readSlice(
             ChannelBufferIndexFinder endIndexFinder) {
         int endIndex = buffer.indexOf(buffer.readerIndex(), buffer.writerIndex(), endIndexFinder);
@@ -342,6 +424,21 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         return buffer.readUnsignedShort();
     }
 
+    public char readChar() {
+        checkReadableBytes(2);
+        return buffer.readChar();
+    }
+
+    public float readFloat() {
+        checkReadableBytes(4);
+        return buffer.readFloat();
+    }
+
+    public double readDouble() {
+        checkReadableBytes(8);
+        return buffer.readDouble();
+    }
+
     public void resetReaderIndex() {
         buffer.resetReaderIndex();
     }
@@ -350,7 +447,7 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         throw new UnreplayableOperationException();
     }
 
-    public void setByte(int index, byte value) {
+    public void setByte(int index, int value) {
         throw new UnreplayableOperationException();
     }
 
@@ -408,10 +505,23 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         throw new UnreplayableOperationException();
     }
 
-    public void setShort(int index, short value) {
+    public void setShort(int index, int value) {
         throw new UnreplayableOperationException();
     }
 
+    public void setChar(int index, int value) {
+        throw new UnreplayableOperationException();
+    }
+
+    public void setFloat(int index, float value) {
+        throw new UnreplayableOperationException();
+    }
+
+    public void setDouble(int index, double value) {
+        throw new UnreplayableOperationException();
+    }
+
+    @Deprecated
     public int skipBytes(ChannelBufferIndexFinder firstIndexFinder) {
         int oldReaderIndex = buffer.readerIndex();
         int newReaderIndex = buffer.indexOf(oldReaderIndex, buffer.writerIndex(), firstIndexFinder);
@@ -441,6 +551,7 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
     }
 
     public ByteBuffer toByteBuffer(int index, int length) {
+        checkIndex(index, length);
         return buffer.toByteBuffer(index, length);
     }
 
@@ -453,11 +564,22 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         return buffer.toByteBuffers(index, length);
     }
 
+    public String toString(int index, int length, Charset charset) {
+        checkIndex(index, length);
+        return buffer.toString(index, length, charset);
+    }
+
+    public String toString(Charset charsetName) {
+        throw new UnreplayableOperationException();
+    }
+
+    @Deprecated
     public String toString(int index, int length, String charsetName) {
         checkIndex(index, length);
         return buffer.toString(index, length, charsetName);
     }
 
+    @Deprecated
     public String toString(
             int index, int length, String charsetName,
             ChannelBufferIndexFinder terminatorFinder) {
@@ -465,10 +587,12 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         return buffer.toString(index, length, charsetName, terminatorFinder);
     }
 
+    @Deprecated
     public String toString(String charsetName) {
         throw new UnreplayableOperationException();
     }
 
+    @Deprecated
     public String toString(
             String charsetName, ChannelBufferIndexFinder terminatorFinder) {
         throw new UnreplayableOperationException();
@@ -493,7 +617,7 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         return 0;
     }
 
-    public void writeByte(byte value) {
+    public void writeByte(int value) {
         throw new UnreplayableOperationException();
     }
 
@@ -554,7 +678,19 @@ class ReplayingDecoderBuffer implements ChannelBuffer {
         throw new UnreplayableOperationException();
     }
 
-    public void writeShort(short value) {
+    public void writeShort(int value) {
+        throw new UnreplayableOperationException();
+    }
+
+    public void writeChar(int value) {
+        throw new UnreplayableOperationException();
+    }
+
+    public void writeFloat(float value) {
+        throw new UnreplayableOperationException();
+    }
+
+    public void writeDouble(double value) {
         throw new UnreplayableOperationException();
     }
 

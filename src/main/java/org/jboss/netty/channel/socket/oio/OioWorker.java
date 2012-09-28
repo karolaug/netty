@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.oio;
 
@@ -31,16 +24,15 @@ import java.nio.channels.ClosedChannelException;
 import java.util.regex.Pattern;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
 
 /**
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1331 $, $Date: 2009-06-05 00:30:55 -0700 (Fri, 05 Jun 2009) $
+ * @version $Rev: 2307 $, $Date: 2010-06-16 05:33:29 +0200 (Wed, 16 Jun 2010) $
  *
  */
 class OioWorker implements Runnable {
@@ -95,15 +87,9 @@ class OioWorker implements Runnable {
                 break;
             }
 
-            ChannelBuffer buffer;
-            if (readBytes == buf.length) {
-                buffer = ChannelBuffers.wrappedBuffer(buf);
-            } else {
-                // A rare case, but it sometimes happen.
-                buffer = ChannelBuffers.wrappedBuffer(buf, 0, readBytes);
-            }
-
-            fireMessageReceived(channel, buffer);
+            fireMessageReceived(
+                    channel,
+                    channel.getConfig().getBufferFactory().getBuffer(buf, 0, readBytes));
         }
 
         // Setting the workerThread to null will prevent any channel
@@ -117,14 +103,22 @@ class OioWorker implements Runnable {
     static void write(
             OioSocketChannel channel, ChannelFuture future,
             Object message) {
+
         OutputStream out = channel.getOutputStream();
+        if (out == null) {
+            Exception e = new ClosedChannelException();
+            future.setFailure(e);
+            fireExceptionCaught(channel, e);
+            return;
+        }
+
         try {
             ChannelBuffer a = (ChannelBuffer) message;
-            int bytes = a.readableBytes();
+            int length = a.readableBytes();
             synchronized (out) {
-                a.getBytes(a.readerIndex(), out, bytes);
+                a.getBytes(a.readerIndex(), out, length);
             }
-            fireWriteComplete(channel, bytes);
+            fireWriteComplete(channel, length);
             future.setSuccess();
         } catch (Throwable t) {
             // Convert 'SocketException: Socket closed' to

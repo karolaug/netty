@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.group;
 
@@ -26,8 +19,8 @@ import java.net.SocketAddress;
 import java.util.AbstractSet;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,15 +30,14 @@ import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ServerChannel;
-import org.jboss.netty.util.internal.CombinedIterator;
 import org.jboss.netty.util.internal.ConcurrentHashMap;
 
 /**
  * The default {@link ChannelGroup} implementation.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1243 $, $Date: 2009-04-23 02:36:25 -0700 (Thu, 23 Apr 2009) $
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  *
  * @apiviz.landmark
  */
@@ -188,7 +180,7 @@ public class DefaultChannelGroup extends AbstractSet<Channel> implements Channel
 
     public ChannelGroupFuture close() {
         Map<Integer, ChannelFuture> futures =
-            new HashMap<Integer, ChannelFuture>(size());
+            new LinkedHashMap<Integer, ChannelFuture>(size());
 
         for (Channel c: serverChannels.values()) {
             futures.put(c.getId(), c.close().awaitUninterruptibly());
@@ -202,7 +194,7 @@ public class DefaultChannelGroup extends AbstractSet<Channel> implements Channel
 
     public ChannelGroupFuture disconnect() {
         Map<Integer, ChannelFuture> futures =
-            new HashMap<Integer, ChannelFuture>(size());
+            new LinkedHashMap<Integer, ChannelFuture>(size());
 
         for (Channel c: serverChannels.values()) {
             futures.put(c.getId(), c.disconnect().awaitUninterruptibly());
@@ -216,7 +208,7 @@ public class DefaultChannelGroup extends AbstractSet<Channel> implements Channel
 
     public ChannelGroupFuture setInterestOps(int interestOps) {
         Map<Integer, ChannelFuture> futures =
-            new HashMap<Integer, ChannelFuture>(size());
+            new LinkedHashMap<Integer, ChannelFuture>(size());
 
         for (Channel c: serverChannels.values()) {
             futures.put(c.getId(), c.setInterestOps(interestOps).awaitUninterruptibly());
@@ -230,7 +222,7 @@ public class DefaultChannelGroup extends AbstractSet<Channel> implements Channel
 
     public ChannelGroupFuture setReadable(boolean readable) {
         Map<Integer, ChannelFuture> futures =
-            new HashMap<Integer, ChannelFuture>(size());
+            new LinkedHashMap<Integer, ChannelFuture>(size());
 
         for (Channel c: serverChannels.values()) {
             futures.put(c.getId(), c.setReadable(readable).awaitUninterruptibly());
@@ -244,7 +236,7 @@ public class DefaultChannelGroup extends AbstractSet<Channel> implements Channel
 
     public ChannelGroupFuture unbind() {
         Map<Integer, ChannelFuture> futures =
-            new HashMap<Integer, ChannelFuture>(size());
+            new LinkedHashMap<Integer, ChannelFuture>(size());
 
         for (Channel c: serverChannels.values()) {
             futures.put(c.getId(), c.unbind().awaitUninterruptibly());
@@ -258,7 +250,7 @@ public class DefaultChannelGroup extends AbstractSet<Channel> implements Channel
 
     public ChannelGroupFuture write(Object message) {
         Map<Integer, ChannelFuture> futures =
-            new HashMap<Integer, ChannelFuture>(size());
+            new LinkedHashMap<Integer, ChannelFuture>(size());
         if (message instanceof ChannelBuffer) {
             ChannelBuffer buf = (ChannelBuffer) message;
             for (Channel c: this) {
@@ -274,7 +266,7 @@ public class DefaultChannelGroup extends AbstractSet<Channel> implements Channel
 
     public ChannelGroupFuture write(Object message, SocketAddress remoteAddress) {
         Map<Integer, ChannelFuture> futures =
-            new HashMap<Integer, ChannelFuture>(size());
+            new LinkedHashMap<Integer, ChannelFuture>(size());
         if (message instanceof ChannelBuffer) {
             ChannelBuffer buf = (ChannelBuffer) message;
             for (Channel c: this) {

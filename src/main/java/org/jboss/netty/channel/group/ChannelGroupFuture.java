@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.group;
 
@@ -28,7 +21,9 @@ import java.util.concurrent.TimeUnit;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelHandler;
+import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.handler.execution.ExecutionHandler;
 
 /**
@@ -81,10 +76,11 @@ import org.jboss.netty.handler.execution.ExecutionHandler;
  * operation it is waiting for, which is a dead lock.
  * <pre>
  * // BAD - NEVER DO THIS
- * public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
+ * {@code @Override}
+ * public void messageReceived({@link ChannelHandlerContext} ctx, {@link MessageEvent} e) {
  *     if (e.getMessage() instanceof ShutdownMessage) {
- *         ChannelGroup allChannels = MyServer.getAllChannels();
- *         ChannelGroupFuture future = allChannels.close();
+ *         {@link ChannelGroup} allChannels = MyServer.getAllChannels();
+ *         {@link ChannelGroupFuture} future = allChannels.close();
  *         future.awaitUninterruptibly();
  *         // Perform post-shutdown operation
  *         // ...
@@ -92,12 +88,13 @@ import org.jboss.netty.handler.execution.ExecutionHandler;
  * }
  *
  * // GOOD
+ * {@code @Override}
  * public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
  *     if (e.getMessage() instanceof ShutdownMessage) {
- *         ChannelGroup allChannels = MyServer.getAllChannels();
- *         ChannelGroupFuture future = allChannels.close();
- *         future.addListener(new ChannelGroupFutureListener() {
- *             public void operationComplete(ChannelGroupFuture future) {
+ *         {@link ChannelGroup} allChannels = MyServer.getAllChannels();
+ *         {@link ChannelGroupFuture} future = allChannels.close();
+ *         future.addListener(new {@link ChannelGroupFutureListener}() {
+ *             public void operationComplete({@link ChannelGroupFuture} future) {
  *                 // Perform post-closure operation
  *                 // ...
  *             }
@@ -111,13 +108,13 @@ import org.jboss.netty.handler.execution.ExecutionHandler;
  * make sure you do not call {@link #await()} in an I/O thread.  Otherwise,
  * {@link IllegalStateException} will be raised to prevent a dead lock.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1262 $, $Date: 2009-04-28 06:35:55 -0700 (Tue, 28 Apr 2009) $
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2122 $, $Date: 2010-02-02 03:00:04 +0100 (Tue, 02 Feb 2010) $
  *
  * @apiviz.owns org.jboss.netty.channel.group.ChannelGroupFutureListener - - notifies
  */
-public interface ChannelGroupFuture extends Iterable<ChannelFuture>{
+public interface ChannelGroupFuture extends Iterable<ChannelFuture> {
 
     /**
      * Returns the {@link ChannelGroup} which is associated with this future.

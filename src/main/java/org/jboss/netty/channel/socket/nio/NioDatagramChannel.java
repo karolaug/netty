@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.nio;
 
@@ -44,17 +37,18 @@ import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelSink;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.socket.DatagramChannelConfig;
+import org.jboss.netty.channel.socket.nio.SocketSendBufferPool.SendBuffer;
 import org.jboss.netty.util.internal.LinkedTransferQueue;
 import org.jboss.netty.util.internal.ThreadLocalBoolean;
 
 /**
  * Provides an NIO based {@link org.jboss.netty.channel.socket.DatagramChannel}.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  * @author Daniel Bevenius (dbevenius@jboss.com)
  *
- * @version $Rev: 1411 $, $Date: 2009-06-18 00:33:37 -0700 (Thu, 18 Jun 2009) $
+ * @version $Rev: 2202 $, $Date: 2010-02-23 08:18:58 +0100 (Tue, 23 Feb 2010) $
  */
 class NioDatagramChannel extends AbstractChannel
                                 implements org.jboss.netty.channel.socket.DatagramChannel {
@@ -80,7 +74,7 @@ class NioDatagramChannel extends AbstractChannel
     final Object interestOpsLock = new Object();
 
     /**
-     * Monitor object for synchronizing access to the {@link WriteBufferQueue}.
+     * Monitor object for synchronizing access to the {@link WriteRequestQueue}.
      */
     final Object writeLock = new Object();
 
@@ -97,10 +91,10 @@ class NioDatagramChannel extends AbstractChannel
     /**
      * Queue of write {@link MessageEvent}s.
      */
-    final Queue<MessageEvent> writeBufferQueue = new WriteBufferQueue();
+    final Queue<MessageEvent> writeBufferQueue = new WriteRequestQueue();
 
     /**
-     * Keeps track of the number of bytes that the {@link WriteBufferQueue} currently
+     * Keeps track of the number of bytes that the {@link WriteRequestQueue} currently
      * contains.
      */
     final AtomicInteger writeBufferSize = new AtomicInteger();
@@ -114,11 +108,16 @@ class NioDatagramChannel extends AbstractChannel
      * The current write {@link MessageEvent}
      */
     MessageEvent currentWriteEvent;
+    SendBuffer currentWriteBuffer;
 
     /**
      * Boolean that indicates that write operation is in progress.
      */
-    volatile boolean inWriteNowLoop;
+    boolean inWriteNowLoop;
+    boolean writeSuspended;
+
+    private volatile InetSocketAddress localAddress;
+    volatile InetSocketAddress remoteAddress;
 
     NioDatagramChannel(final ChannelFactory factory,
             final ChannelPipeline pipeline, final ChannelSink sink,
@@ -142,21 +141,31 @@ class NioDatagramChannel extends AbstractChannel
     }
 
     public InetSocketAddress getLocalAddress() {
-        try {
-            return (InetSocketAddress) datagramChannel.socket().getLocalSocketAddress();
-        } catch (Throwable t) {
-            // Sometimes fails on a closed socket in Windows.
-            return null;
+        InetSocketAddress localAddress = this.localAddress;
+        if (localAddress == null) {
+            try {
+                this.localAddress = localAddress =
+                    (InetSocketAddress) datagramChannel.socket().getLocalSocketAddress();
+            } catch (Throwable t) {
+                // Sometimes fails on a closed socket in Windows.
+                return null;
+            }
         }
+        return localAddress;
     }
 
     public InetSocketAddress getRemoteAddress() {
-        try {
-            return (InetSocketAddress) datagramChannel.socket().getRemoteSocketAddress();
-        } catch (Throwable t) {
-            // Sometimes fails on a closed socket in Windows.
-            return null;
+        InetSocketAddress remoteAddress = this.remoteAddress;
+        if (remoteAddress == null) {
+            try {
+                this.remoteAddress = remoteAddress =
+                    (InetSocketAddress) datagramChannel.socket().getRemoteSocketAddress();
+            } catch (Throwable t) {
+                // Sometimes fails on a closed socket in Windows.
+                return null;
+            }
         }
+        return remoteAddress;
     }
 
     public boolean isBound() {
@@ -164,7 +173,7 @@ class NioDatagramChannel extends AbstractChannel
     }
 
     public boolean isConnected() {
-        return datagramChannel.socket().isConnected();
+        return datagramChannel.isConnected();
     }
 
     @Override
@@ -229,14 +238,17 @@ class NioDatagramChannel extends AbstractChannel
     }
 
     /**
-     * WriteBuffer is an extension of {@link LinkedTransferQueue} that adds
-     * support for highWaterMark checking of the write buffer size.
+     * {@link WriteRequestQueue} is an extension of {@link LinkedTransferQueue}
+     * that adds support for highWaterMark checking of the write buffer size.
      */
-    private final class WriteBufferQueue extends
+    private final class WriteRequestQueue extends
             LinkedTransferQueue<MessageEvent> {
+
+        private static final long serialVersionUID = 5057413071460766376L;
+
         private final ThreadLocalBoolean notifying = new ThreadLocalBoolean();
 
-        WriteBufferQueue() {
+        WriteRequestQueue() {
             super();
         }
 
@@ -249,7 +261,7 @@ class NioDatagramChannel extends AbstractChannel
             boolean success = super.offer(e);
             assert success;
 
-            int messageSize = ((ChannelBuffer) e.getMessage()).readableBytes();
+            int messageSize = getMessageSize(e);
             int newWriteBufferSize = writeBufferSize.addAndGet(messageSize);
             int highWaterMark = getConfig().getWriteBufferHighWaterMark();
 
@@ -274,7 +286,7 @@ class NioDatagramChannel extends AbstractChannel
         public MessageEvent poll() {
             MessageEvent e = super.poll();
             if (e != null) {
-                int messageSize = ((ChannelBuffer) e.getMessage()).readableBytes();
+                int messageSize = getMessageSize(e);
                 int newWriteBufferSize = writeBufferSize.addAndGet(-messageSize);
                 int lowWaterMark = getConfig().getWriteBufferLowWaterMark();
 
@@ -291,6 +303,14 @@ class NioDatagramChannel extends AbstractChannel
             }
             return e;
         }
+
+        private int getMessageSize(MessageEvent e) {
+            Object m = e.getMessage();
+            if (m instanceof ChannelBuffer) {
+                return ((ChannelBuffer) m).readableBytes();
+            }
+            return 0;
+        }
     }
 
     /**
@@ -304,7 +324,7 @@ class NioDatagramChannel extends AbstractChannel
 
         public void run() {
             writeTaskInTaskQueue.set(false);
-            NioDatagramWorker.write(NioDatagramChannel.this, false);
+            worker.writeFromTaskLoop(NioDatagramChannel.this);
         }
     }
 

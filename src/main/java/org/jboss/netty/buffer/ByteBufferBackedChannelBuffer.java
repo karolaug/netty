@@ -1,52 +1,44 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.buffer;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
-import java.nio.charset.UnsupportedCharsetException;
 
 /**
  * A NIO {@link ByteBuffer} based buffer.  It is recommended to use {@link ChannelBuffers#directBuffer(int)}
  * and {@link ChannelBuffers#wrappedBuffer(ByteBuffer)} instead of calling the
  * constructor explicitly.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1398 $, $Date: 2009-06-17 00:57:14 -0700 (Wed, 17 Jun 2009) $
+ * @version $Rev: 2309 $, $Date: 2010-06-21 09:00:03 +0200 (Mon, 21 Jun 2010) $
  *
  */
 public class ByteBufferBackedChannelBuffer extends AbstractChannelBuffer {
 
     private final ByteBuffer buffer;
+    private final ByteOrder order;
     private final int capacity;
 
     /**
@@ -57,13 +49,15 @@ public class ByteBufferBackedChannelBuffer extends AbstractChannelBuffer {
             throw new NullPointerException("buffer");
         }
 
-        this.buffer = buffer.slice().order(buffer.order());
+        order = buffer.order();
+        this.buffer = buffer.slice().order(order);
         capacity = buffer.remaining();
         writerIndex(capacity);
     }
 
     private ByteBufferBackedChannelBuffer(ByteBufferBackedChannelBuffer buffer) {
         this.buffer = buffer.buffer;
+        order = buffer.order;
         capacity = buffer.capacity;
         setIndex(buffer.readerIndex(), buffer.writerIndex());
     }
@@ -76,12 +70,28 @@ public class ByteBufferBackedChannelBuffer extends AbstractChannelBuffer {
         }
     }
 
+    public boolean isDirect() {
+        return buffer.isDirect();
+    }
+
     public ByteOrder order() {
-        return buffer.order();
+        return order;
     }
 
     public int capacity() {
         return capacity;
+    }
+
+    public boolean hasArray() {
+        return buffer.hasArray();
+    }
+
+    public byte[] array() {
+        return buffer.array();
+    }
+
+    public int arrayOffset() {
+        return buffer.arrayOffset();
     }
 
     public byte getByte(int index) {
@@ -141,12 +151,12 @@ public class ByteBufferBackedChannelBuffer extends AbstractChannelBuffer {
         dst.put(data);
     }
 
-    public void setByte(int index, byte value) {
-        buffer.put(index, value);
+    public void setByte(int index, int value) {
+        buffer.put(index, (byte) value);
     }
 
-    public void setShort(int index, short value) {
-        buffer.putShort(index, value);
+    public void setShort(int index, int value) {
+        buffer.putShort(index, (short) value);
     }
 
     public void setMedium(int index, int   value) {
@@ -194,7 +204,7 @@ public class ByteBufferBackedChannelBuffer extends AbstractChannelBuffer {
             return;
         }
 
-        if (!buffer.isReadOnly() && buffer.hasArray()) {
+        if (buffer.hasArray()) {
             out.write(
                     buffer.array(),
                     index + buffer.arrayOffset(),
@@ -219,7 +229,7 @@ public class ByteBufferBackedChannelBuffer extends AbstractChannelBuffer {
 
         int readBytes = 0;
 
-        if (!buffer.isReadOnly() && buffer.hasArray()) {
+        if (buffer.hasArray()) {
             index += buffer.arrayOffset();
             do {
                 int localReadBytes = in.read(buffer.array(), index, length);
@@ -292,29 +302,11 @@ public class ByteBufferBackedChannelBuffer extends AbstractChannelBuffer {
         }
     }
 
-    public String toString(int index, int length, String charsetName) {
-        if (!buffer.isReadOnly() && buffer.hasArray()) {
-            try {
-                return new String(
-                        buffer.array(), index + buffer.arrayOffset(), length,
-                        charsetName);
-            } catch (UnsupportedEncodingException e) {
-                throw new UnsupportedCharsetException(charsetName);
-            }
-        } else {
-            byte[] tmp = new byte[length];
-            ((ByteBuffer) buffer.duplicate().position(index)).get(tmp);
-            try {
-                return new String(tmp, charsetName);
-            } catch (UnsupportedEncodingException e) {
-                throw new UnsupportedCharsetException(charsetName);
-            }
-        }
-    }
-
     public ChannelBuffer slice(int index, int length) {
         if (index == 0 && length == capacity()) {
-            return duplicate();
+            ChannelBuffer slice = duplicate();
+            slice.setIndex(0, length);
+            return slice;
         } else {
             if (index >= 0 && length == 0) {
                 return ChannelBuffers.EMPTY_BUFFER;

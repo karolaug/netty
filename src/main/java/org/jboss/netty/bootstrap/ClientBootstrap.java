@@ -1,49 +1,32 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.bootstrap;
 
-import static org.jboss.netty.channel.Channels.*;
-
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
-import java.nio.channels.NotYetConnectedException;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelConfig;
 import org.jboss.netty.channel.ChannelFactory;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelHandler;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
 import org.jboss.netty.channel.ChannelPipelineException;
 import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.ExceptionEvent;
-import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.jboss.netty.channel.Channels;
 
 /**
  * A helper class which creates a new client-side {@link Channel} and makes a
@@ -54,7 +37,7 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
  * {@link #setOption(String, Object) Options} are used to configure a channel:
  *
  * <pre>
- * ClientBootstrap b = ...;
+ * {@link ClientBootstrap} b = ...;
  *
  * // Options for a new channel
  * b.setOption("remoteAddress", new {@link InetSocketAddress}("example.com", 8080));
@@ -63,22 +46,42 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
  * </pre>
  *
  * For the detailed list of available options, please refer to
- * {@link ChannelConfig} and its sub-types
+ * {@link ChannelConfig} and its sub-types.
  *
  * <h3>Configuring a channel pipeline</h3>
  *
  * Every channel has its own {@link ChannelPipeline} and you can configure it
  * in two ways.
+ *
+ * The recommended approach is to specify a {@link ChannelPipelineFactory} by
+ * calling {@link #setPipelineFactory(ChannelPipelineFactory)}.
+ *
+ * <pre>
+ * {@link ClientBootstrap} b = ...;
+ * b.setPipelineFactory(new MyPipelineFactory());
+ *
+ * public class MyPipelineFactory implements {@link ChannelPipelineFactory} {
+ *   public {@link ChannelPipeline} getPipeline() throws Exception {
+ *     // Create and configure a new pipeline for a new channel.
+ *     {@link ChannelPipeline} p = {@link Channels}.pipeline();
+ *     p.addLast("encoder", new EncodingHandler());
+ *     p.addLast("decoder", new DecodingHandler());
+ *     p.addLast("logic",   new LogicHandler());
+ *     return p;
+ *   }
+ * }
+ * </pre>
+
  * <p>
- * {@linkplain #setPipeline(ChannelPipeline) The first approach} is to use
+ * The alternative approach, which works only in a certain situation, is to use
  * the default pipeline and let the bootstrap to shallow-copy the default
  * pipeline for each new channel:
  *
  * <pre>
- * ClientBootstrap b = ...;
+ * {@link ClientBootstrap} b = ...;
  * {@link ChannelPipeline} p = b.getPipeline();
  *
- * // Add handlers to the pipeline.
+ * // Add handlers to the default pipeline.
  * p.addLast("encoder", new EncodingHandler());
  * p.addLast("decoder", new DecodingHandler());
  * p.addLast("logic",   new LogicHandler());
@@ -86,24 +89,9 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
  *
  * Please note 'shallow-copy' here means that the added {@link ChannelHandler}s
  * are not cloned but only their references are added to the new pipeline.
- * Therefore, you have to choose the second approach if you are going to open
- * more than one {@link Channel} whose {@link ChannelPipeline} contains any
- * {@link ChannelHandler} whose {@link ChannelPipelineCoverage} is {@code "one"}.
- *
- * <p>
- * {@linkplain #setPipelineFactory(ChannelPipelineFactory) The second approach}
- * is to specify a {@link ChannelPipelineFactory} by yourself and have full
- * control over how a new pipeline is created.  This approach is more complex
- * than the first approach while it is much more flexible:
- *
- * <pre>
- * ClientBootstrap b = ...;
- * b.setPipelineFactory(new MyPipelineFactory());
- *
- * public class MyPipelineFactory implements {@link ChannelPipelineFactory} {
- *   // Create a new pipeline for a new channel and configure it here ...
- * }
- * </pre>
+ * Therefore, you cannot use this approach if you are going to open more than
+ * one {@link Channel}s or run a server that accepts incoming connections to
+ * create its child channels.
  *
  * <h3>Applying different settings for different {@link Channel}s</h3>
  *
@@ -111,13 +99,14 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
  * manages any resources.  What manages the resources is the
  * {@link ChannelFactory} implementation you specified in the constructor of
  * {@link ClientBootstrap}.  Therefore, it is OK to create as many
- * {@link ClientBootstrap} instances as you want to apply different settings
- * for different {@link Channel}s.
+ * {@link ClientBootstrap} instances as you want with the same
+ * {@link ChannelFactory} to apply different settings for different
+ * {@link Channel}s.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1393 $, $Date: 2009-06-16 22:09:45 -0700 (Tue, 16 Jun 2009) $
+ * @version $Rev: 2337 $, $Date: 2010-07-07 06:32:10 +0200 (Wed, 07 Jul 2010) $
  *
  * @apiviz.landmark
  */
@@ -146,7 +135,7 @@ public class ClientBootstrap extends Bootstrap {
      * This method is similar to the following code:
      *
      * <pre>
-     * ClientBootstrap b = ...;
+     * {@link ClientBootstrap} b = ...;
      * b.connect(b.getOption("remoteAddress"), b.getOption("localAddress"));
      * </pre>
      *
@@ -177,7 +166,7 @@ public class ClientBootstrap extends Bootstrap {
      * automatically.  This method is identical with the following code:
      *
      * <pre>
-     * ClientBootstrap b = ...;
+     * {@link ClientBootstrap} b = ...;
      * b.connect(remoteAddress, b.getOption("localAddress"));
      * </pre>
      *
@@ -218,9 +207,6 @@ public class ClientBootstrap extends Bootstrap {
             throw new NullPointerException("remoteAddress");
         }
 
-        final BlockingQueue<ChannelFuture> futureQueue =
-            new LinkedBlockingQueue<ChannelFuture>();
-
         ChannelPipeline pipeline;
         try {
             pipeline = getPipelineFactory().getPipeline();
@@ -228,92 +214,16 @@ public class ClientBootstrap extends Bootstrap {
             throw new ChannelPipelineException("Failed to initialize a pipeline.", e);
         }
 
-        pipeline.addFirst(
-                "connector", new Connector(
-                        this, remoteAddress, localAddress, futureQueue));
+        // Set the options.
+        Channel ch = getFactory().newChannel(pipeline);
+        ch.getConfig().setOptions(getOptions());
 
-        getFactory().newChannel(pipeline);
-
-        // Wait until the future is available.
-        ChannelFuture future = null;
-        do {
-            try {
-                future = futureQueue.poll(Integer.MAX_VALUE, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                // Ignore
-            }
-        } while (future == null);
-
-        pipeline.remove("connector");
-
-        return future;
-    }
-
-    @ChannelPipelineCoverage("one")
-    static final class Connector extends SimpleChannelUpstreamHandler {
-        private final Bootstrap bootstrap;
-        private final SocketAddress localAddress;
-        private final BlockingQueue<ChannelFuture> futureQueue;
-        private final SocketAddress remoteAddress;
-        private volatile boolean finished = false;
-
-        Connector(
-                Bootstrap bootstrap,
-                SocketAddress remoteAddress,
-                SocketAddress localAddress,
-                BlockingQueue<ChannelFuture> futureQueue) {
-            this.bootstrap = bootstrap;
-            this.localAddress = localAddress;
-            this.futureQueue = futureQueue;
-            this.remoteAddress = remoteAddress;
+        // Bind.
+        if (localAddress != null) {
+            ch.bind(localAddress);
         }
 
-        @Override
-        public void channelOpen(
-                ChannelHandlerContext context,
-                ChannelStateEvent event) {
-
-            try {
-                // Apply options.
-                event.getChannel().getConfig().setOptions(bootstrap.getOptions());
-            } finally {
-                context.sendUpstream(event);
-            }
-
-            // Bind or connect.
-            if (localAddress != null) {
-                event.getChannel().bind(localAddress);
-            } else {
-                finished = futureQueue.offer(event.getChannel().connect(remoteAddress));
-                assert finished;
-            }
-        }
-
-        @Override
-        public void channelBound(
-                ChannelHandlerContext context,
-                ChannelStateEvent event) {
-            context.sendUpstream(event);
-
-            // Connect if not connected yet.
-            if (localAddress != null) {
-                finished = futureQueue.offer(event.getChannel().connect(remoteAddress));
-                assert finished;
-            }
-        }
-
-        @Override
-        public void exceptionCaught(
-                ChannelHandlerContext ctx, ExceptionEvent e)
-                throws Exception {
-            ctx.sendUpstream(e);
-
-            Throwable cause = e.getCause();
-            if (!(cause instanceof NotYetConnectedException) && !finished) {
-                e.getChannel().close();
-                finished = futureQueue.offer(failedFuture(e.getChannel(), cause));
-                assert finished;
-            }
-        }
+        // Connect.
+        return ch.connect(remoteAddress);
     }
 }

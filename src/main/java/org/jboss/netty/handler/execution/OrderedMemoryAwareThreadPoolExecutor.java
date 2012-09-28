@@ -1,28 +1,24 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.execution;
 
+import java.util.IdentityHashMap;
 import java.util.LinkedList;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
@@ -36,51 +32,116 @@ import org.jboss.netty.util.ObjectSizeEstimator;
 import org.jboss.netty.util.internal.ConcurrentIdentityWeakKeyHashMap;
 
 /**
- * A {@link MemoryAwareThreadPoolExecutor} which maintains the
- * {@link ChannelEvent} order for the same {@link Channel}.
+ * A {@link MemoryAwareThreadPoolExecutor} which makes sure the events from the
+ * same {@link Channel} are executed sequentially.
  * <p>
- * {@link OrderedMemoryAwareThreadPoolExecutor} executes the queued task in the
- * same thread if an existing thread is running a task associated with the same
- * {@link Channel}.  This behavior is to make sure the events from the same
- * {@link Channel} are handled in a correct order.  A different thread might be
- * chosen only when the task queue of the {@link Channel} is empty.
- * <p>
- * Although {@link OrderedMemoryAwareThreadPoolExecutor} guarantees the order
- * of {@link ChannelEvent}s.  It does not guarantee that the invocation will be
- * made by the same thread for the same channel, but it does guarantee that
- * the invocation will be made sequentially for the events of the same channel.
- * For example, the events can be processed as depicted below:
+ * <b>NOTE</b>: This thread pool inherits most characteristics of its super
+ * type, so please make sure to refer to {@link MemoryAwareThreadPoolExecutor}
+ * to understand how it works basically.
  *
+ * <h3>Event execution order</h3>
+ *
+ * For example, let's say there are two executor threads that handle the events
+ * from the two channels:
  * <pre>
- *           -----------------------------------&gt; Timeline -----------------------------------&gt;
+ *           -------------------------------------&gt; Timeline ------------------------------------&gt;
  *
- * Thread X: --- Channel A (Event 1) --.   .-- Channel B (Event 2) --- Channel B (Event 3) ---&gt;
+ * Thread X: --- Channel A (Event A1) --.   .-- Channel B (Event B2) --- Channel B (Event B3) ---&gt;
  *                                      \ /
  *                                       X
  *                                      / \
- * Thread Y: --- Channel B (Event 1) --'   '-- Channel A (Event 2) --- Channel A (Event 3) ---&gt;
+ * Thread Y: --- Channel B (Event B1) --'   '-- Channel A (Event A2) --- Channel A (Event A3) ---&gt;
  * </pre>
- *
- * Please note that the events of different channels are independent from each
+ * As you see, the events from different channels are independent from each
  * other.  That is, an event of Channel B will not be blocked by an event of
  * Channel A and vice versa, unless the thread pool is exhausted.
  * <p>
- * If you want the events associated with the same channel to be executed
- * simultaneously, please use {@link MemoryAwareThreadPoolExecutor} instead.
+ * Also, it is guaranteed that the invocation will be made sequentially for the
+ * events from the same channel.  For example, the event A2 is never executed
+ * before the event A1 is finished.  (Although not recommended, if you want the
+ * events from the same channel to be executed simultaneously, please use
+ * {@link MemoryAwareThreadPoolExecutor} instead.)
+ * <p>
+ * However, it is not guaranteed that the invocation will be made by the same
+ * thread for the same channel.  The events from the same channel can be
+ * executed by different threads.  For example, the Event A2 is executed by the
+ * thread Y while the event A1 was executed by the thread X.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * <h3>Using a different key other than {@link Channel} to maintain event order</h3>
+ * <p>
+ * {@link OrderedMemoryAwareThreadPoolExecutor} uses a {@link Channel} as a key
+ * that is used for maintaining the event execution order, as explained in the
+ * previous section.  Alternatively, you can extend it to change its behavior.
+ * For example, you can change the key to the remote IP of the peer:
+ *
+ * <pre>
+ * public class RemoteAddressBasedOMATPE extends {@link OrderedMemoryAwareThreadPoolExecutor} {
+ *
+ *     ... Constructors ...
+ *
+ *     {@code @Override}
+ *     protected ConcurrentMap&lt;Object, Executor&gt; newChildExecutorMap() {
+ *         // The default implementation returns a special ConcurrentMap that
+ *         // uses identity comparison only (see {@link IdentityHashMap}).
+ *         // Because SocketAddress does not work with identity comparison,
+ *         // we need to employ more generic implementation.
+ *         return new ConcurrentHashMap&lt;Object, Executor&gt;
+ *     }
+ *
+ *     protected Object getChildExecutorKey({@link ChannelEvent} e) {
+ *         // Use the IP of the remote peer as a key.
+ *         return ((InetSocketAddress) e.getChannel().getRemoteAddress()).getAddress();
+ *     }
+ *
+ *     // Make public so that you can call from anywhere.
+ *     public boolean removeChildExecutor(Object key) {
+ *         super.removeChildExecutor(key);
+ *     }
+ * }
+ * </pre>
+ *
+ * Please be very careful of memory leak of the child executor map.  You must
+ * call {@link #removeChildExecutor(Object)} when the life cycle of the key
+ * ends (e.g. all connections from the same IP were closed.)  Also, please
+ * keep in mind that the key can appear again after calling {@link #removeChildExecutor(Object)}
+ * (e.g. a new connection could come in from the same old IP after removal.)
+ * If in doubt, prune the old unused or stall keys from the child executor map
+ * periodically:
+ *
+ * <pre>
+ * RemoteAddressBasedOMATPE executor = ...;
+ *
+ * on every 3 seconds:
+ *
+ *   for (Iterator&lt;Object&gt; i = executor.getChildExecutorKeySet().iterator; i.hasNext();) {
+ *       InetAddress ip = (InetAddress) i.next();
+ *       if (there is no active connection from 'ip' now &&
+ *           there has been no incoming connection from 'ip' for last 10 minutes) {
+ *           i.remove();
+ *       }
+ *   }
+ * </pre>
+ *
+ * If the expected maximum number of keys is small and deterministic, you could
+ * use a weak key map such as <a href="http://viewvc.jboss.org/cgi-bin/viewvc.cgi/jbosscache/experimental/jsr166/src/jsr166y/ConcurrentWeakHashMap.java?view=markup">ConcurrentWeakHashMap</a>
+ * or synchronized {@link WeakHashMap} instead of managing the life cycle of the
+ * keys by yourself.
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  * @author David M. Lloyd (david.lloyd@redhat.com)
  *
- * @version $Rev: 1273 $, $Date: 2009-04-28 19:10:52 -0700 (Tue, 28 Apr 2009) $
+ * @version $Rev: 2308 $, $Date: 2010-06-17 16:23:59 +0200 (Thu, 17 Jun 2010) $
  *
  * @apiviz.landmark
  */
 public class OrderedMemoryAwareThreadPoolExecutor extends
         MemoryAwareThreadPoolExecutor {
 
-    private final ConcurrentMap<Channel, Executor> childExecutors =
-        new ConcurrentIdentityWeakKeyHashMap<Channel, Executor>();
+    // TODO Make OMATPE focus on the case where Channel is the key.
+    //      Add a new less-efficient TPE that allows custom key.
+
+    private final ConcurrentMap<Object, Executor> childExecutors = newChildExecutorMap();
 
     /**
      * Creates a new instance.
@@ -154,6 +215,24 @@ public class OrderedMemoryAwareThreadPoolExecutor extends
                 keepAliveTime, unit, objectSizeEstimator, threadFactory);
     }
 
+    protected ConcurrentMap<Object, Executor> newChildExecutorMap() {
+        return new ConcurrentIdentityWeakKeyHashMap<Object, Executor>();
+    }
+
+    protected Object getChildExecutorKey(ChannelEvent e) {
+        return e.getChannel();
+    }
+
+    protected Set<Object> getChildExecutorKeySet() {
+        return childExecutors.keySet();
+    }
+
+    protected boolean removeChildExecutor(Object key) {
+        // FIXME: Succeed only when there is no task in the ChildExecutor's queue.
+        //        Note that it will need locking which might slow down task submission.
+        return childExecutors.remove(key) != null;
+    }
+
     /**
      * Executes the specified task concurrently while maintaining the event
      * order.
@@ -164,16 +243,16 @@ public class OrderedMemoryAwareThreadPoolExecutor extends
             doUnorderedExecute(task);
         } else {
             ChannelEventRunnable r = (ChannelEventRunnable) task;
-            getOrderedExecutor(r.getEvent()).execute(task);
+            getChildExecutor(r.getEvent()).execute(task);
         }
     }
 
-    private Executor getOrderedExecutor(ChannelEvent e) {
-        Channel channel = e.getChannel();
-        Executor executor = childExecutors.get(channel);
+    private Executor getChildExecutor(ChannelEvent e) {
+        Object key = getChildExecutorKey(e);
+        Executor executor = childExecutors.get(key);
         if (executor == null) {
             executor = new ChildExecutor();
-            Executor oldExecutor = childExecutors.putIfAbsent(channel, executor);
+            Executor oldExecutor = childExecutors.putIfAbsent(key, executor);
             if (oldExecutor != null) {
                 executor = oldExecutor;
             }
@@ -181,6 +260,7 @@ public class OrderedMemoryAwareThreadPoolExecutor extends
 
         // Remove the entry when the channel closes.
         if (e instanceof ChannelStateEvent) {
+            Channel channel = e.getChannel();
             ChannelStateEvent se = (ChannelStateEvent) e;
             if (se.getState() == ChannelState.OPEN &&
                 !channel.isOpen()) {

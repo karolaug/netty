@@ -1,29 +1,23 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
 import java.util.concurrent.TimeUnit;
 
+import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.handler.execution.ExecutionHandler;
 
 /**
@@ -32,13 +26,40 @@ import org.jboss.netty.handler.execution.ExecutionHandler;
  * All I/O operations in Netty are asynchronous.  It means any I/O calls will
  * return immediately with no guarantee that the requested I/O operation has
  * been completed at the end of the call.  Instead, you will be returned with
- * a {@link ChannelFuture} instance which tells you when the requested I/O
- * operation has succeeded, failed, or cancelled.
+ * a {@link ChannelFuture} instance which gives you the information about the
+ * result or status of the I/O operation.
  * <p>
+ * A {@link ChannelFuture} is either <em>uncompleted</em> or <em>completed</em>.
+ * When an I/O operation begins, a new future object is created.  The new future
+ * is uncompleted initially - it is neither succeeded, failed, nor cancelled
+ * because the I/O operation is not finished yet.  If the I/O operation is
+ * finished either successfully, with failure, or by cancellation, the future is
+ * marked as completed with more specific information, such as the cause of the
+ * failure.  Please note that even failure and cancellation belong to the
+ * completed state.
+ * <pre>
+ *                                      +---------------------------+
+ *                                      | Completed successfully    |
+ *                                      +---------------------------+
+ *                                 +---->      isDone() = <b>true</b>      |
+ * +--------------------------+    |    |   isSuccess() = <b>true</b>      |
+ * |        Uncompleted       |    |    +===========================+
+ * +--------------------------+    |    | Completed with failure    |
+ * |      isDone() = <b>false</b>    |    |    +---------------------------+
+ * |   isSuccess() = false    |----+---->   isDone() = <b>true</b>         |
+ * | isCancelled() = false    |    |    | getCause() = <b>non-null</b>     |
+ * |    getCause() = null     |    |    +===========================+
+ * +--------------------------+    |    | Completed by cancellation |
+ *                                 |    +---------------------------+
+ *                                 +---->      isDone() = <b>true</b>      |
+ *                                      | isCancelled() = <b>true</b>      |
+ *                                      +---------------------------+
+ * </pre>
+ *
  * Various methods are provided to let you check if the I/O operation has been
  * completed, wait for the completion, and retrieve the result of the I/O
- * operation. It also allows you to add more than one {@link ChannelFutureListener}
- * so you can get notified when the I/O operation has been completed.
+ * operation. It also allows you to add {@link ChannelFutureListener}s so you
+ * can get notified when the I/O operation is completed.
  *
  * <h3>Prefer {@link #addListener(ChannelFutureListener)} to {@link #await()}</h3>
  *
@@ -71,9 +92,10 @@ import org.jboss.netty.handler.execution.ExecutionHandler;
  * operation it is waiting for, which is a dead lock.
  * <pre>
  * // BAD - NEVER DO THIS
- * public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
+ * {@code @Override}
+ * public void messageReceived({@link ChannelHandlerContext} ctx, {@link MessageEvent} e) {
  *     if (e.getMessage() instanceof GoodByeMessage) {
- *         ChannelFuture future = e.getChannel().close();
+ *         {@link ChannelFuture} future = e.getChannel().close();
  *         future.awaitUninterruptibly();
  *         // Perform post-closure operation
  *         // ...
@@ -81,11 +103,12 @@ import org.jboss.netty.handler.execution.ExecutionHandler;
  * }
  *
  * // GOOD
- * public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
+ * {@code @Override}
+ * public void messageReceived({@link ChannelHandlerContext} ctx, {@link MessageEvent} e) {
  *     if (e.getMessage() instanceof GoodByeMessage) {
- *         ChannelFuture future = e.getChannel().close();
- *         future.addListener(new ChannelFutureListener() {
- *             public void operationComplete(ChannelFuture future) {
+ *         {@link ChannelFuture} future = e.getChannel().close();
+ *         future.addListener(new {@link ChannelFutureListener}() {
+ *             public void operationComplete({@link ChannelFuture} future) {
  *                 // Perform post-closure operation
  *                 // ...
  *             }
@@ -99,10 +122,52 @@ import org.jboss.netty.handler.execution.ExecutionHandler;
  * make sure you do not call {@link #await()} in an I/O thread.  Otherwise,
  * {@link IllegalStateException} will be raised to prevent a dead lock.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * <h3>Do not confuse I/O timeout and await timeout</h3>
  *
- * @version $Rev: 1262 $, $Date: 2009-04-28 06:35:55 -0700 (Tue, 28 Apr 2009) $
+ * The timeout value you specify with {@link #await(long)},
+ * {@link #await(long, TimeUnit)}, {@link #awaitUninterruptibly(long)}, or
+ * {@link #awaitUninterruptibly(long, TimeUnit)} are not related with I/O
+ * timeout at all.  If an I/O operation times out, the future will be marked as
+ * 'completed with failure,' as depicted in the diagram above.  For example,
+ * connect timeout should be configured via a transport-specific option:
+ * <pre>
+ * // BAD - NEVER DO THIS
+ * {@link ClientBootstrap} b = ...;
+ * {@link ChannelFuture} f = b.connect(...);
+ * f.awaitUninterruptibly(10, TimeUnit.SECONDS);
+ * if (f.isCancelled()) {
+ *     // Connection attempt cancelled by user
+ * } else if (!f.isSuccess()) {
+ *     // You might get a NullPointerException here because the future
+ *     // might not be completed yet.
+ *     f.getCause().printStackTrace();
+ * } else {
+ *     // Connection established successfully
+ * }
+ *
+ * // GOOD
+ * {@link ClientBootstrap} b = ...;
+ * // Configure the connect timeout option.
+ * <b>b.setOption("connectTimeoutMillis", 10000);</b>
+ * {@link ChannelFuture} f = b.connect(...);
+ * f.awaitUninterruptibly();
+ *
+ * // Now we are sure the future is completed.
+ * assert f.isDone();
+ *
+ * if (f.isCancelled()) {
+ *     // Connection attempt cancelled by user
+ * } else if (!f.isSuccess()) {
+ *     f.getCause().printStackTrace();
+ * } else {
+ *     // Connection established successfully
+ * }
+ * </pre>
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ *
+ * @version $Rev: 2192 $, $Date: 2010-02-19 10:58:38 +0100 (Fri, 19 Feb 2010) $
  *
  * @apiviz.landmark
  * @apiviz.owns org.jboss.netty.channel.ChannelFutureListener - - notifies
@@ -175,6 +240,16 @@ public interface ChannelFuture {
     boolean setFailure(Throwable cause);
 
     /**
+     * Notifies the progress of the operation to the listeners that implements
+     * {@link ChannelFutureProgressListener}. Please note that this method will
+     * not do anything and return {@code false} if this future is complete
+     * already.
+     *
+     * @return {@code true} if and only if notification was made.
+     */
+    boolean setProgress(long amount, long current, long total);
+
+    /**
      * Adds the specified listener to this future.  The
      * specified listener is notified when this future is
      * {@linkplain #isDone() done}.  If this future is already
@@ -185,9 +260,9 @@ public interface ChannelFuture {
     /**
      * Removes the specified listener from this future.
      * The specified listener is no longer notified when this
-     * future is {@linkplain #isDone() done}.  If this
-     * future is already completed, this method has no effect
-     * and returns silently.
+     * future is {@linkplain #isDone() done}.  If the specified
+     * listener is not associated with this future, this method
+     * does nothing and returns silently.
      */
     void removeListener(ChannelFutureListener listener);
 

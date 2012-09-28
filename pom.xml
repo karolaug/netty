@@ -1,32 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
   <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.jboss</groupId>
+    <artifactId>jboss-parent</artifactId>
+    <version>5</version>
+  </parent>
+
   <groupId>org.jboss.netty</groupId>
   <artifactId>netty</artifactId>
   <packaging>bundle</packaging>
-  <version>3.1.0.CR1</version>
+  <version>3.2.3.Final</version>
 
   <name>The Netty Project</name>
   <url>http://www.jboss.org/netty/</url>
@@ -40,50 +40,32 @@
     programming such as TCP and UDP socket server.
   </description>
 
-  <organization>
-    <name>JBoss, by Red Hat</name>
-    <url>http://www.jboss.org/</url>
-  </organization>
   <licenses>
     <license>
-      <name>GNU Lesser General Public License</name>
-      <url>http://www.gnu.org/licenses/lgpl.html</url>
+      <name>Apache License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0</url>
     </license>
   </licenses>
   <inceptionYear>2008</inceptionYear>
 
   <scm>
-    <connection>scm:svn:http://anonsvn.jboss.org/repos/netty/tags/netty-3.1.0.CR1</connection>
-    <developerConnection>scm:svn:https://svn.jboss.org/repos/netty/tags/netty-3.1.0.CR1</developerConnection>
+    <url>scm:svn:https://svn.jboss.org/repos/netty/tags/netty-3.2.3.Final</url>
+    <connection>scm:svn:http://anonsvn.jboss.org/repos/netty/tags/netty-3.2.3.Final</connection>
+    <developerConnection>scm:svn:https://svn.jboss.org/repos/netty/tags/netty-3.2.3.Final</developerConnection>
   </scm>
 
   <dependencies>
-    <!-- JBoss XNIO - completely optional -->
-    <dependency>
-      <groupId>org.jboss.xnio</groupId>
-      <artifactId>xnio-api</artifactId>
-      <version>1.2.0.GA</version>
-      <scope>compile</scope>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.jboss.xnio</groupId>
-      <artifactId>xnio-nio</artifactId>
-      <version>1.2.0.GA</version>
-      <scope>compile</scope>
-      <optional>true</optional>
-    </dependency>
-  
     <!-- Google Protocol Buffers - completely optional -->
     <dependency>
       <groupId>com.google.protobuf</groupId>
       <artifactId>protobuf-java</artifactId>
-      <version>2.0.3</version>
+      <version>2.3.0</version>
       <scope>compile</scope>
       <optional>true</optional>
     </dependency>
 
     <!-- Servlet API - completely optional -->
+    <!-- Used for HTTP tunneling transport -->
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>servlet-api</artifactId>
@@ -94,23 +76,16 @@
 
     <!-- IoC/DI containers - completely optional -->
     <dependency>
-      <groupId>org.jboss.microcontainer</groupId>
-      <artifactId>jboss-kernel</artifactId>
-      <version>2.0.2.GA</version>
-      <scope>compile</scope>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
       <groupId>org.apache.felix</groupId>
       <artifactId>org.osgi.core</artifactId>
-      <version>1.2.0</version>
+      <version>1.4.0</version>
       <scope>compile</scope>
       <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.apache.felix</groupId>
       <artifactId>org.osgi.compendium</artifactId>
-      <version>1.2.0</version>
+      <version>1.4.0</version>
       <scope>compile</scope>
       <optional>true</optional>
       <exclusions>
@@ -124,26 +99,12 @@
         </exclusion>
       </exclusions>
     </dependency>
-    <dependency>
-      <groupId>com.google.code.guice</groupId>
-      <artifactId>guice</artifactId>
-      <version>1.0</version>
-      <scope>compile</scope>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring</artifactId>
-      <version>2.0.8</version>
-      <scope>compile</scope>
-      <optional>true</optional>
-    </dependency>
-  
+
     <!-- Logging frameworks - completely optional -->
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
-      <version>1.5.6</version>
+      <version>1.5.11</version>
       <scope>compile</scope>
       <optional>true</optional>
     </dependency>
@@ -157,14 +118,14 @@
     <dependency>
       <groupId>org.jboss.logging</groupId>
       <artifactId>jboss-logging-spi</artifactId>
-      <version>2.0.5.GA</version>
+      <version>2.1.1.GA</version>
       <scope>compile</scope>
       <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>log4j</groupId>
       <artifactId>log4j</artifactId>
-      <version>1.2.15</version>
+      <version>1.2.16</version>
       <scope>compile</scope>
       <exclusions>
         <exclusion>
@@ -191,25 +152,25 @@
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <version>4.5</version>
+      <version>4.8.1</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.easymock</groupId>
       <artifactId>easymock</artifactId>
-      <version>2.4</version>
+      <version>2.5.2</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.easymock</groupId>
       <artifactId>easymockclassextension</artifactId>
-      <version>2.4</version>
+      <version>2.5.2</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-simple</artifactId>
-      <version>1.5.6</version>
+      <version>1.5.11</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -219,10 +180,19 @@
   </properties>
 
   <build>
+    <resources>
+      <resource>
+        <directory>${basedir}/src/main/resources</directory>
+      </resource>
+      <resource>
+        <directory>${basedir}/target/license</directory>
+      </resource>
+    </resources>
+
     <plugins>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>2.0.2</version>
+        <version>2.3</version>
         <configuration>
           <encoding>UTF-8</encoding>
           <source>1.5</source>
@@ -233,15 +203,57 @@
         </configuration>
       </plugin>
       <plugin>
-        <artifactId>maven-resources-plugin</artifactId>
-        <version>2.3</version>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>buildnumber-maven-plugin</artifactId>
+        <version>1.0-beta-4</version>
+        <executions>
+          <execution>
+            <phase>validate</phase>
+            <goals>
+              <goal>create</goal>
+            </goals>
+          </execution>
+        </executions>
         <configuration>
-          <encoding>UTF-8</encoding>
+          <doCheck>false</doCheck>
+          <doUpdate>true</doUpdate>
+          <revisionOnScmFailure>-1</revisionOnScmFailure>
         </configuration>
       </plugin>
       <plugin>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>2.4.2</version>
+        <configuration>
+          <encoding>UTF-8</encoding>
+        </configuration>
+        <executions>
+          <execution>
+            <id>copy-legal-info</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${basedir}/target/license/META-INF</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${basedir}</directory>
+                  <filtering>false</filtering>
+                  <includes>
+                    <include>COPYRIGHT.txt</include>
+                    <include>LICENSE.txt</include>
+                    <include>NOTICE.txt</include>
+                    <include>license/*.txt</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>2.4.3</version>
+        <version>2.5</version>
         <configuration>
           <forkMode>never</forkMode>
           <excludes>
@@ -253,10 +265,11 @@
       <plugin>
         <groupId>org.apache.felix</groupId>
         <artifactId>maven-bundle-plugin</artifactId>
-        <version>2.0.0</version>
+        <version>2.0.1</version>
         <extensions>true</extensions>
         <configuration>
           <instructions>
+            <SCM-Revision>${buildNumber}</SCM-Revision>
             <Bundle-SymbolicName>${project.groupId}</Bundle-SymbolicName>
             <Bundle-DocURL>${project.url}</Bundle-DocURL>
             <Bundle-Activator>
@@ -264,13 +277,11 @@
             </Bundle-Activator>
             <Export-Package>
               !${project.groupId}.example.*,
-              !${project.groupId}.logging.*,
               !${project.groupId}.util.internal.*,
               ${project.groupId}.*;version=${project.version}
             </Export-Package>
             <Private-Package>
               ${project.groupId}.example.*,
-              ${project.groupId}.logging.*,
               ${project.groupId}.util.internal.*,
             </Private-Package>
             <Import-Package>
@@ -281,7 +292,7 @@
       </plugin>
       <plugin>
         <artifactId>maven-source-plugin</artifactId>
-        <version>2.1</version>
+        <version>2.1.1</version>
         <executions>
           <execution>
             <id>attach-source</id>
@@ -301,18 +312,20 @@
         <executions>
           <execution>
             <id>write-version</id>
-            <phase>compile</phase>
+            <phase>validate</phase>
             <goals>
               <goal>run</goal>
             </goals>
             <configuration>
               <tasks>
-                <echo message="${project.version}" file="${project.build.directory}/version.txt" />
+                <mkdir dir="${project.build.directory}" />
+                <echo message="${project.version}, r${buildNumber}" file="${project.build.directory}/version.txt" />
+                <echo message="// DO NOT MODIFY - WILL BE OVERWRITTEN DURING THE BUILD PROCESS${line.separator}package org.jboss.netty.util;${line.separator}/**${line.separator} * Provides the version information of Netty.${line.separator} * @apiviz.landmark${line.separator} */${line.separator}public final class Version {${line.separator} /** The version identifier. */${line.separator} public static final String ID = &quot;${project.version}-r${buildNumber}&quot;;${line.separator} /** Prints out the version identifier to stdout. */${line.separator} public static void main(String[] args) { System.out.println(ID); }${line.separator} private Version() { super(); }${line.separator}}${line.separator}" file="${basedir}/src/main/java/org/jboss/netty/util/Version.java" />
               </tasks>
             </configuration>
           </execution>
           <execution>
-            <id>add-license</id>
+            <id>remove-examples</id>
             <phase>package</phase>
             <goals>
               <goal>run</goal>
@@ -328,36 +341,22 @@
                   <then>
                     <move file="${project.build.directory}/${project.build.finalName}.jar" tofile="${project.build.directory}/${project.build.finalName}.orig.jar" />
                     <zip destfile="${project.build.directory}/${project.build.finalName}.jar">
-                      <zipfileset dir="${basedir}" prefix="META-INF/">
-                        <include name="LICENSE.*" />
-                        <include name="NOTICE.*" />
-                        <include name="COPYRIGHT.*" />
-                      </zipfileset>
-                      <zipfileset dir="${basedir}/license" prefix="META-INF/license/">
-                        <exclude name="**/.*/**" />
-                        <include name="**" />
-                      </zipfileset>
                       <zipfileset filemode="644" src="${project.build.directory}/${project.build.finalName}.orig.jar" dirmode="755">
                         <exclude name="*/*/*/example/**" />
                       </zipfileset>
                     </zip>
                     <delete file="${project.build.directory}/${project.build.finalName}.orig.jar" />
+                    <checksum file="${project.build.directory}/${project.build.finalName}.jar" algorithm="md5" forceoverwrite="yes" />
+                    <checksum file="${project.build.directory}/${project.build.finalName}.jar" algorithm="sha1" forceoverwrite="yes" />
                     <move file="${project.build.directory}/${project.build.finalName}-sources.jar" tofile="${project.build.directory}/${project.build.finalName}-sources.orig.jar" />
                     <zip destfile="${project.build.directory}/${project.build.finalName}-sources.jar">
-                      <zipfileset dir="${basedir}" prefix="META-INF/">
-                        <include name="LICENSE.*" />
-                        <include name="NOTICE.*" />
-                        <include name="COPYRIGHT.*" />
-                      </zipfileset>
-                      <zipfileset dir="${basedir}/license" prefix="META-INF/license/">
-                        <exclude name="**/.*/**" />
-                        <include name="**" />
-                      </zipfileset>
                       <zipfileset filemode="644" src="${project.build.directory}/${project.build.finalName}-sources.orig.jar" dirmode="755">
                         <exclude name="*/*/*/example/**" />
                       </zipfileset>
                     </zip>
                     <delete file="${project.build.directory}/${project.build.finalName}-sources.orig.jar" />
+                    <checksum file="${project.build.directory}/${project.build.finalName}-sources.jar" algorithm="md5" forceoverwrite="yes" />
+                    <checksum file="${project.build.directory}/${project.build.finalName}-sources.jar" algorithm="sha1" forceoverwrite="yes" />
                   </then>
                 </if>
               </tasks>
@@ -368,17 +367,17 @@
           <dependency>
             <groupId>org.apache.ant</groupId>
             <artifactId>ant</artifactId>
-            <version>1.7.1</version>
+            <version>1.8.1</version>
           </dependency>
           <dependency>
             <groupId>org.apache.ant</groupId>
             <artifactId>ant-launcher</artifactId>
-            <version>1.7.1</version>
+            <version>1.8.1</version>
           </dependency>
           <dependency>
             <groupId>ant-contrib</groupId>
             <artifactId>ant-contrib</artifactId>
-            <version>1.0b2</version>
+            <version>1.0b3</version>
             <exclusions>
               <exclusion>
                 <groupId>ant</groupId>
@@ -390,7 +389,7 @@
       </plugin>
       <plugin>
         <artifactId>maven-javadoc-plugin</artifactId>
-        <version>2.5</version>
+        <version>2.6.1</version>
         <executions>
           <execution>
             <id>generate-javadoc</id>
@@ -405,10 +404,12 @@
           <docletArtifact>
             <groupId>org.jboss.apiviz</groupId>
             <artifactId>apiviz</artifactId>
-            <version>1.3.0.GA</version>
+            <version>1.3.1.GA</version>
           </docletArtifact>
           <attach>false</attach>
           <stylesheetfile>${basedir}/src/javadoc/stylesheet.css</stylesheetfile>
+          <javadocDirectory>${basedir}/src/javadoc</javadocDirectory>
+          <docfilessubdirs>true</docfilessubdirs>
           <useStandardDocletOptions>true</useStandardDocletOptions>
           <outputDirectory>${project.build.directory}/api</outputDirectory>
           <reportOutputDirectory>${project.build.directory}/api</reportOutputDirectory>
@@ -420,16 +421,13 @@
           <author>true</author>
           <keywords>true</keywords>
           <overview>${basedir}/src/javadoc/overview.html</overview>
-          <doctitle>${project.name} ${project.version} API Reference</doctitle>
-          <windowtitle>${project.name} ${project.version} API Reference</windowtitle>
+          <doctitle>${project.name} API Reference (${project.version}, r${buildNumber})</doctitle>
+          <windowtitle>${project.name} API Reference (${project.version}, r${buildNumber})</windowtitle>
           <additionalparam>
             -link http://java.sun.com/javase/6/docs/api/
-            -link http://docs.jboss.org/xnio/latest/api/
             -link http://code.google.com/apis/protocolbuffers/docs/reference/java/
             -link http://java.sun.com/products/servlet/2.5/docs/servlet-2_5-mr2/
             -link http://www.osgi.org/javadoc/r4v41/
-            -link http://google-guice.googlecode.com/svn/trunk/javadoc/
-            -link http://static.springframework.org/spring/docs/2.5.x/api/
             -link http://www.slf4j.org/apidocs/
             -link http://commons.apache.org/logging/commons-logging-1.1.1/apidocs/
             -link http://logging.apache.org/log4j/1.2/apidocs/
@@ -438,7 +436,6 @@
             -group "Central interface for all I/O operations" ${project.groupId}.channel*
             -group "Client &amp; Server bootstrapping utilities" ${project.groupId}.bootstrap*
             -group "Reusable I/O event interceptors" ${project.groupId}.handler*
-            -group "IoC (Dependency Injection) container integration" ${project.groupId}.container*
             -group "Miscellaneous" ${project.groupId}.logging*:${project.groupId}.util*
 
             -sourceclasspath ${project.build.outputDirectory}
@@ -446,7 +443,7 @@
           </additionalparam>
           <encoding>UTF-8</encoding>
           <locale>en_US</locale>
-          <excludePackageNames>${project.groupId}.example*:${project.groupId}.util.internal*</excludePackageNames>
+          <excludePackageNames>${project.groupId}.example*:${project.groupId}.container*:${project.groupId}.util.internal*</excludePackageNames>
         </configuration>
       </plugin>
       <plugin>
@@ -468,12 +465,14 @@
           <destDir>${project.build.directory}/xref</destDir>
           <javadocDir>${project.build.directory}/api</javadocDir>
           <stylesheet>${basedir}/src/xref/stylesheet.css</stylesheet>
+          <docTitle>${project.name} Source Xref (${project.version}, r${buildNumber})</docTitle>
+          <windowTitle>${project.name} Source Xref (${project.version}, r${buildNumber})</windowTitle>
         </configuration>
       </plugin>
       <plugin>
         <groupId>org.jboss.maven.plugins</groupId>
         <artifactId>maven-jdocbook-plugin</artifactId>
-        <version>2.1.2</version>
+        <version>2.2.1</version>
         <executions>
           <execution>
             <id>generate-docbook</id>
@@ -489,11 +488,37 @@
             <groupId>org.jboss</groupId>
             <artifactId>jbossorg-docbook-xslt</artifactId>
             <version>1.1.0</version>
+            <exclusions>
+              <exclusion>
+                <groupId>org.eclipse.wst.css</groupId>
+                <artifactId>core</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>org.eclipse.wst.sse</groupId>
+                <artifactId>core</artifactId>
+              </exclusion>
+            </exclusions>
           </dependency>
           <dependency>
             <groupId>org.jboss</groupId>
             <artifactId>jbossorg-jdocbook-style</artifactId>
             <version>1.1.0</version>
+            <type>jdocbook-style</type>
+            <exclusions>
+              <exclusion>
+                <groupId>org.eclipse.wst.css</groupId>
+                <artifactId>core</artifactId>
+              </exclusion>
+              <exclusion>
+                <groupId>org.eclipse.wst.sse</groupId>
+                <artifactId>core</artifactId>
+              </exclusion>
+            </exclusions>
+          </dependency>
+          <dependency>
+            <groupId>org.jboss</groupId>
+            <artifactId>jbossorg-fonts</artifactId>
+            <version>1.0.0</version>
             <type>jdocbook-style</type>
           </dependency>
         </dependencies>
@@ -538,12 +563,14 @@
             <xincludeSupported>true</xincludeSupported>
             <xmlTransformerType>saxon</xmlTransformerType>
             <docbookVersion>1.72.0</docbookVersion>
+            <localeSeparator>-</localeSeparator>
+            <autoDetectFonts>true</autoDetectFonts>
           </options>
         </configuration>
       </plugin>
       <plugin>
         <artifactId>maven-assembly-plugin</artifactId>
-        <version>2.2-beta-3</version>
+        <version>2.2-beta-5</version>
         <executions>
           <execution>
             <id>generate-distribution</id>
@@ -564,7 +591,7 @@
       </plugin>
       <plugin>
         <artifactId>maven-release-plugin</artifactId>
-        <version>2.0-beta-9</version>
+        <version>2.0</version>
         <configuration>
           <tagBase>https://svn.jboss.org/repos/netty/tags</tagBase>
           <!-- We don't want to use the default release profile because it
@@ -577,7 +604,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-eclipse-plugin</artifactId>
-        <version>2.6</version>
+        <version>2.8</version>
         <configuration>
           <downloadSources>true</downloadSources>
           <addVersionToProjectName>true</addVersionToProjectName>
@@ -585,69 +612,5 @@
       </plugin>
     </plugins>
   </build>
-
-  <repositories>
-    <repository>
-      <snapshots>
-        <enabled>false</enabled>
-        <updatePolicy>never</updatePolicy>
-      </snapshots>
-      <releases>
-        <enabled>true</enabled>
-        <updatePolicy>interval:10080</updatePolicy>
-      </releases>
-      <id>jboss.release</id>
-      <name>JBoss releases</name>
-      <url>http://repository.jboss.org/maven2</url>
-    </repository>
-  </repositories>
-
-  <pluginRepositories>
-    <pluginRepository>
-      <snapshots>
-        <enabled>false</enabled>
-        <updatePolicy>never</updatePolicy>
-      </snapshots>
-      <releases>
-        <enabled>true</enabled>
-        <updatePolicy>interval:10080</updatePolicy>
-      </releases>
-      <id>jboss.release</id>
-      <name>JBoss releases</name>
-      <url>http://repository.jboss.org/maven2</url>
-    </pluginRepository>
-  </pluginRepositories>
-
-  <distributionManagement>
-    <repository>
-      <id>repository.jboss.org</id>
-      <name>JBoss.org Release Distribution Repository</name>
-      <url>dav:https://svn.jboss.org/repos/repository.jboss.org/maven2</url>
-    </repository>
-    <snapshotRepository>
-      <id>snapshots.jboss.org</id>
-      <name>JBoss.org Development Snapshot Repository</name>
-      <url>dav:https://snapshots.jboss.org/maven2</url>
-    </snapshotRepository>
-  </distributionManagement>
-
-  <profiles>
-    <profile>
-      <id>release</id>
-      <build>
-        <plugins>
-          <plugin>
-            <inherited>true</inherited>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-deploy-plugin</artifactId>
-            <version>2.4</version>
-            <configuration>
-              <updateReleaseInfo>true</updateReleaseInfo>
-            </configuration>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-  </profiles>
 </project>
 

@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 /*
  * Written by Doug Lea with assistance from members of JCP JSR-166
@@ -46,11 +39,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * An alternative identity-comparing {@link ConcurrentMap} which is similar to
  * {@link java.util.concurrent.ConcurrentHashMap}.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Doug Lea
  * @author Jason T. Greene
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1336 $, $Date: 2009-06-09 03:19:29 -0700 (Tue, 09 Jun 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2371 $, $Date: 2010-10-19 08:00:42 +0200 (Tue, 19 Oct 2010) $
  *
  * @param <K> the type of keys maintained by this map
  * @param <V> the type of mapped values
@@ -271,8 +264,6 @@ public final class ConcurrentIdentityHashMap<K, V> extends AbstractMap<K, V>
          * The load factor for the hash table.  Even though this value is same
          * for all segments, it is replicated to avoid needing links to outer
          * object.
-         *
-         * @serial
          */
         final float loadFactor;
 
@@ -1264,7 +1255,7 @@ public final class ConcurrentIdentityHashMap<K, V> extends AbstractMap<K, V>
             if (!(o instanceof Map.Entry<?, ?>)) {
                 return false;
             }
-            @SuppressWarnings("unchecked")
+            @SuppressWarnings("rawtypes")
             Map.Entry e = (Map.Entry) o;
             return eq(key, e.getKey()) && eq(value, e.getValue());
         }

@@ -1,41 +1,35 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.frame;
 
 import java.net.SocketAddress;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelHandler;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
+import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.ChannelUpstreamHandler;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.jboss.netty.handler.codec.replay.ReplayingDecoder;
 
 /**
  * Decodes the received {@link ChannelBuffer}s into a meaningful frame object.
@@ -81,11 +75,12 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
  * DECODER IMPLEMENTATION
  * ======================
  *
- * public class IntegerHeaderFrameDecoder extends FrameDecoder {
+ * public class IntegerHeaderFrameDecoder extends {@link FrameDecoder} {
  *
- *   protected Object decode(ChannelHandlerContext ctx,
- *                           Channel channel,
- *                           ChannelBuffer buf) throws Exception {
+ *   {@code @Override}
+ *   protected Object decode({@link ChannelHandlerContext} ctx,
+ *                           {@link Channel channel},
+ *                           {@link ChannelBuffer} buf) throws Exception {
  *
  *     // Make sure if the length field was received.
  *     if (buf.readableBytes() &lt; 4) {
@@ -120,7 +115,7 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
  *     }
  *
  *     // There's enough bytes in the buffer. Read it.
- *     ChannelBuffer frame = buf.readBytes(length);
+ *     {@link ChannelBuffer} frame = buf.readBytes(length);
  *
  *     // Successfully decoded a frame.  Return the decoded frame.
  *     return <strong>frame</strong>;
@@ -137,19 +132,57 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
  * {@link ChannelUpstreamHandler} receives a {@link MessageEvent} which
  * contains a POJO rather than a {@link ChannelBuffer}.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * <h3>Replacing a decoder with another decoder in a pipeline</h3>
+ * <p>
+ * If you are going to write a protocol multiplexer, you will probably want to
+ * replace a {@link FrameDecoder} (protocol detector) with another
+ * {@link FrameDecoder} or {@link ReplayingDecoder} (actual protocol decoder).
+ * It is not possible to achieve this simply by calling
+ * {@link ChannelPipeline#replace(ChannelHandler, String, ChannelHandler)}, but
+ * some additional steps are required:
+ * <pre>
+ * public class FirstDecoder extends {@link FrameDecoder} {
+ *
+ *     public FirstDecoder() {
+ *         super(true); // Enable unfold
+ *     }
+ *
+ *     {@code @Override}
+ *     protected Object decode({@link ChannelHandlerContext} ctx,
+ *                             {@link Channel} channel,
+ *                             {@link ChannelBuffer} buf) {
+ *         ...
+ *         // Decode the first message
+ *         Object firstMessage = ...;
+ *
+ *         // Add the second decoder
+ *         ctx.getPipeline().addLast("second", new SecondDecoder());
+ *
+ *         // Remove the first decoder (me)
+ *         ctx.getPipeline().remove(this);
+ *
+ *         if (buf.readable()) {
+ *             // Hand off the remaining data to the second decoder
+ *             return new Object[] { firstMessage, buf.readBytes(buf.readableBytes()) };
+ *         } else {
+ *             // Nothing to hand off
+ *             return firstMessage;
+ *         }
+ *     }
+ * }
+ * </pre>
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
  * @version $Rev:231 $, $Date:2008-06-12 16:44:50 +0900 (목, 12 6월 2008) $
  *
  * @apiviz.landmark
  */
-@ChannelPipelineCoverage("one")
 public abstract class FrameDecoder extends SimpleChannelUpstreamHandler {
 
     private final boolean unfold;
-    private final AtomicReference<ChannelBuffer> cumulation =
-        new AtomicReference<ChannelBuffer>();
+    private ChannelBuffer cumulation;
 
     protected FrameDecoder() {
         this(false);
@@ -260,7 +293,7 @@ public abstract class FrameDecoder extends SimpleChannelUpstreamHandler {
             } else if (oldReaderIndex == cumulation.readerIndex()) {
                 throw new IllegalStateException(
                         "decode() method must read at least one byte " +
-                        "if it returned a frame.");
+                        "if it returned a frame (caused by: " + getClass() + ")");
             }
 
             unfoldAndFireMessageReceived(context, remoteAddress, frame);
@@ -288,9 +321,11 @@ public abstract class FrameDecoder extends SimpleChannelUpstreamHandler {
     private void cleanup(ChannelHandlerContext ctx, ChannelStateEvent e)
             throws Exception {
         try {
-            ChannelBuffer cumulation = this.cumulation.getAndSet(null);
+            ChannelBuffer cumulation = this.cumulation;
             if (cumulation == null) {
                 return;
+            } else {
+                this.cumulation = null;
             }
 
             if (cumulation.readable()) {
@@ -311,14 +346,12 @@ public abstract class FrameDecoder extends SimpleChannelUpstreamHandler {
     }
 
     private ChannelBuffer cumulation(ChannelHandlerContext ctx) {
-        ChannelBuffer buf = cumulation.get();
-        if (buf == null) {
-            buf = ChannelBuffers.dynamicBuffer(
+        ChannelBuffer c = cumulation;
+        if (c == null) {
+            c = ChannelBuffers.dynamicBuffer(
                     ctx.getChannel().getConfig().getBufferFactory());
-            if (!cumulation.compareAndSet(null, buf)) {
-                buf = cumulation.get();
-            }
+            cumulation = c;
         }
-        return buf;
+        return c;
     }
 }

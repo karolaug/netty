@@ -1,30 +1,24 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
 import static java.util.concurrent.TimeUnit.*;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -38,10 +32,10 @@ import org.jboss.netty.util.internal.IoWorkerRunnable;
  * to create a new {@link ChannelFuture} rather than calling the constructor
  * explicitly.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1241 $, $Date: 2009-04-23 00:14:27 -0700 (Thu, 23 Apr 2009) $
+ * @version $Rev: 2201 $, $Date: 2010-02-23 06:45:53 +0100 (Tue, 23 Feb 2010) $
  */
 public class DefaultChannelFuture implements ChannelFuture {
 
@@ -50,11 +44,37 @@ public class DefaultChannelFuture implements ChannelFuture {
 
     private static final Throwable CANCELLED = new Throwable();
 
+    private static volatile boolean useDeadLockChecker = true;
+    private static boolean disabledDeadLockCheckerOnce;
+
+    /**
+     * Returns {@code true} if and only if the dead lock checker is enabled.
+     */
+    public static boolean isUseDeadLockChecker() {
+        return useDeadLockChecker;
+    }
+
+    /**
+     * Enables or disables the dead lock checker.  It is not recommended to
+     * disable the dead lock checker.  Disable it at your own risk!
+     */
+    public static void setUseDeadLockChecker(boolean useDeadLockChecker) {
+        if (!useDeadLockChecker && !disabledDeadLockCheckerOnce) {
+            disabledDeadLockCheckerOnce = true;
+            logger.debug(
+                    "The dead lock checker in " +
+                    DefaultChannelFuture.class.getSimpleName() +
+                    " has been disabled as requested at your own risk.");
+        }
+        DefaultChannelFuture.useDeadLockChecker = useDeadLockChecker;
+    }
+
     private final Channel channel;
     private final boolean cancellable;
 
-    private volatile ChannelFutureListener firstListener;
-    private volatile List<ChannelFutureListener> otherListeners;
+    private ChannelFutureListener firstListener;
+    private List<ChannelFutureListener> otherListeners;
+    private List<ChannelFutureProgressListener> progressListeners;
     private boolean done;
     private Throwable cause;
     private int waiters;
@@ -114,6 +134,13 @@ public class DefaultChannelFuture implements ChannelFuture {
                     }
                     otherListeners.add(listener);
                 }
+
+                if (listener instanceof ChannelFutureProgressListener) {
+                    if (progressListeners == null) {
+                        progressListeners = new ArrayList<ChannelFutureProgressListener>(1);
+                    }
+                    progressListeners.add((ChannelFutureProgressListener) listener);
+                }
             }
         }
 
@@ -138,11 +165,19 @@ public class DefaultChannelFuture implements ChannelFuture {
                 } else if (otherListeners != null) {
                     otherListeners.remove(listener);
                 }
+
+                if (listener instanceof ChannelFutureProgressListener) {
+                    progressListeners.remove(listener);
+                }
             }
         }
     }
 
     public ChannelFuture await() throws InterruptedException {
+        if (Thread.interrupted()) {
+            throw new InterruptedException();
+        }
+
         synchronized (this) {
             while (!done) {
                 checkDeadLock();
@@ -167,6 +202,7 @@ public class DefaultChannelFuture implements ChannelFuture {
     }
 
     public ChannelFuture awaitUninterruptibly() {
+        boolean interrupted = false;
         synchronized (this) {
             while (!done) {
                 checkDeadLock();
@@ -174,11 +210,15 @@ public class DefaultChannelFuture implements ChannelFuture {
                 try {
                     this.wait();
                 } catch (InterruptedException e) {
-                    // Ignore.
+                    interrupted = true;
                 } finally {
                     waiters--;
                 }
             }
+        }
+
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
 
         return this;
@@ -201,45 +241,58 @@ public class DefaultChannelFuture implements ChannelFuture {
     }
 
     private boolean await0(long timeoutNanos, boolean interruptable) throws InterruptedException {
+        if (interruptable && Thread.interrupted()) {
+            throw new InterruptedException();
+        }
+
         long startTime = timeoutNanos <= 0 ? 0 : System.nanoTime();
         long waitTime = timeoutNanos;
+        boolean interrupted = false;
 
-        synchronized (this) {
-            if (done) {
-                return done;
-            } else if (waitTime <= 0) {
-                return done;
-            }
-
-            checkDeadLock();
-            waiters++;
-            try {
-                for (;;) {
-                    try {
-                        this.wait(waitTime / 1000000, (int) (waitTime % 1000000));
-                    } catch (InterruptedException e) {
-                        if (interruptable) {
-                            throw e;
-                        }
-                    }
-
-                    if (done) {
-                        return true;
-                    } else {
-                        waitTime = timeoutNanos - (System.nanoTime() - startTime);
-                        if (waitTime <= 0) {
-                            return done;
-                        }
-                    }
+        try {
+            synchronized (this) {
+                if (done) {
+                    return done;
+                } else if (waitTime <= 0) {
+                    return done;
                 }
-            } finally {
-                waiters--;
+
+                checkDeadLock();
+                waiters++;
+                try {
+                    for (;;) {
+                        try {
+                            this.wait(waitTime / 1000000, (int) (waitTime % 1000000));
+                        } catch (InterruptedException e) {
+                            if (interruptable) {
+                                throw e;
+                            } else {
+                                interrupted = true;
+                            }
+                        }
+
+                        if (done) {
+                            return true;
+                        } else {
+                            waitTime = timeoutNanos - (System.nanoTime() - startTime);
+                            if (waitTime <= 0) {
+                                return done;
+                            }
+                        }
+                    }
+                } finally {
+                    waiters--;
+                }
+            }
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
             }
         }
     }
 
     private void checkDeadLock() {
-        if (IoWorkerRunnable.IN_IO_THREAD.get()) {
+        if (isUseDeadLockChecker() && IoWorkerRunnable.IN_IO_THREAD.get()) {
             throw new IllegalStateException(
                     "await*() in I/O thread causes a dead lock or " +
                     "sudden performance drop. Use addListener() instead or " +
@@ -305,9 +358,11 @@ public class DefaultChannelFuture implements ChannelFuture {
     }
 
     private void notifyListeners() {
-        // There won't be any visibility problem or concurrent modification
-        // because 'ready' flag will be checked against both addListener and
-        // removeListener calls.
+        // This method doesn't need synchronization because:
+        // 1) This method is always called after synchronized (this) block.
+        //    Hence any listener list modification happens-before this method.
+        // 2) This method is called only when 'done' is true.  Once 'done'
+        //    becomes true, the listener list is never modified - see add/removeListener()
         if (firstListener != null) {
             notifyListener(firstListener);
             firstListener = null;
@@ -328,6 +383,45 @@ public class DefaultChannelFuture implements ChannelFuture {
             logger.warn(
                     "An exception was thrown by " +
                     ChannelFutureListener.class.getSimpleName() + ".", t);
+        }
+    }
+
+    public boolean setProgress(long amount, long current, long total) {
+        ChannelFutureProgressListener[] plisteners;
+        synchronized (this) {
+            // Do not generate progress event after completion.
+            if (done) {
+                return false;
+            }
+
+            Collection<ChannelFutureProgressListener> progressListeners =
+                this.progressListeners;
+            if (progressListeners == null || progressListeners.isEmpty()) {
+                // Nothing to notify - no need to create an empty array.
+                return true;
+            }
+
+            plisteners = progressListeners.toArray(
+                    new ChannelFutureProgressListener[progressListeners.size()]);
+        }
+
+        for (ChannelFutureProgressListener pl: plisteners) {
+            notifyProgressListener(pl, amount, current, total);
+        }
+
+        return true;
+    }
+
+    private void notifyProgressListener(
+            ChannelFutureProgressListener l,
+            long amount, long current, long total) {
+
+        try {
+            l.operationProgressed(this, amount, current, total);
+        } catch (Throwable t) {
+            logger.warn(
+                    "An exception was thrown by " +
+                    ChannelFutureProgressListener.class.getSimpleName() + ".", t);
         }
     }
 }

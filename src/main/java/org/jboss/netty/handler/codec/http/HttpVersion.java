@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.http;
 
@@ -30,10 +23,10 @@ import java.util.regex.Pattern;
  * <a href="http://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
  * <a href="http://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2089 $, $Date: 2010-01-27 03:39:28 +0100 (Wed, 27 Jan 2010) $
  *
  * @apiviz.exclude
  */
@@ -45,12 +38,12 @@ public class HttpVersion implements Comparable<HttpVersion> {
     /**
      * HTTP/1.0
      */
-    public static final HttpVersion HTTP_1_0 = new HttpVersion("HTTP", 1, 0);
+    public static final HttpVersion HTTP_1_0 = new HttpVersion("HTTP", 1, 0, false);
 
     /**
      * HTTP/1.1
      */
-    public static final HttpVersion HTTP_1_1 = new HttpVersion("HTTP", 1, 1);
+    public static final HttpVersion HTTP_1_1 = new HttpVersion("HTTP", 1, 1, true);
 
     /**
      * Returns an existing or new {@link HttpVersion} instance which matches to
@@ -72,13 +65,22 @@ public class HttpVersion implements Comparable<HttpVersion> {
         if (text.equals("HTTP/1.0")) {
             return HTTP_1_0;
         }
-        return new HttpVersion(text);
+        return new HttpVersion(text, true);
     }
 
     private final String protocolName;
     private final int majorVersion;
     private final int minorVersion;
     private final String text;
+    private final boolean keepAliveDefault;
+
+    /**
+     * @deprecated Use {@link #HttpVersion(String, boolean)} instead.
+     */
+    @Deprecated
+    public HttpVersion(String text) {
+        this(text, true);
+    }
 
     /**
      * Creates a new HTTP version with the specified version string.  You will
@@ -86,8 +88,12 @@ public class HttpVersion implements Comparable<HttpVersion> {
      * derived from HTTP, such as
      * <a href="http://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
      * <a href="http://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>.
+     *
+     * @param keepAliveDefault
+     *        {@code true} if and only if the connection is kept alive unless
+     *        the {@code "Connection"} header is set to {@code "close"} explicitly.
      */
-    public HttpVersion(String text) {
+    public HttpVersion(String text, boolean keepAliveDefault) {
         if (text == null) {
             throw new NullPointerException("text");
         }
@@ -106,6 +112,16 @@ public class HttpVersion implements Comparable<HttpVersion> {
         majorVersion = Integer.parseInt(m.group(2));
         minorVersion = Integer.parseInt(m.group(3));
         this.text = protocolName + '/' + majorVersion + '.' + minorVersion;
+        this.keepAliveDefault = keepAliveDefault;
+    }
+
+    /**
+     * @deprecated Use {@link #HttpVersion(String, int, int, boolean)} instead.
+     */
+    @Deprecated
+    public HttpVersion(
+            String protocolName, int majorVersion, int minorVersion) {
+        this(protocolName, majorVersion, minorVersion, true);
     }
 
     /**
@@ -114,9 +130,14 @@ public class HttpVersion implements Comparable<HttpVersion> {
      * implementing a protocol derived from HTTP, such as
      * <a href="http://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
      * <a href="http://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>
+     *
+     * @param keepAliveDefault
+     *        {@code true} if and only if the connection is kept alive unless
+     *        the {@code "Connection"} header is set to {@code "close"} explicitly.
      */
     public HttpVersion(
-            String protocolName, int majorVersion, int minorVersion) {
+            String protocolName, int majorVersion, int minorVersion,
+            boolean keepAliveDefault) {
         if (protocolName == null) {
             throw new NullPointerException("protocolName");
         }
@@ -144,6 +165,7 @@ public class HttpVersion implements Comparable<HttpVersion> {
         this.majorVersion = majorVersion;
         this.minorVersion = minorVersion;
         text = protocolName + '/' + majorVersion + '.' + minorVersion;
+        this.keepAliveDefault = keepAliveDefault;
     }
 
     /**
@@ -172,6 +194,14 @@ public class HttpVersion implements Comparable<HttpVersion> {
      */
     public String getText() {
         return text;
+    }
+
+    /**
+     * Returns {@code true} if and only if the connection is kept alive unless
+     * the {@code "Connection"} header is set to {@code "close"} explicitly.
+     */
+    public boolean isKeepAliveDefault() {
+        return keepAliveDefault;
     }
 
     /**

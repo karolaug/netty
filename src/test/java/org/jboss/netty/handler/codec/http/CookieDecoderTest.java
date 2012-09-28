@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.http;
 
@@ -31,10 +24,10 @@ import java.util.Set;
 import org.junit.Test;
 
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  */
 public class CookieDecoderTest {
     @Test
@@ -232,6 +225,8 @@ public class CookieDecoderTest {
         assertNull(c.getDomain());
         assertTrue(c.getPorts().isEmpty());
         assertEquals(-1, c.getMaxAge());
+
+        assertFalse(it.hasNext());
     }
 
     @Test
@@ -265,6 +260,8 @@ public class CookieDecoderTest {
         assertNull(c.getCommentUrl());
         assertTrue(c.getPorts().isEmpty());
         assertEquals(-1, c.getMaxAge());
+
+        assertFalse(it.hasNext());
     }
 
     @Test
@@ -309,5 +306,46 @@ public class CookieDecoderTest {
         c = it.next();
         assertEquals("g", c.getName());
         assertEquals("\\", c.getValue());
+
+        assertFalse(it.hasNext());
+    }
+
+    @Test
+    public void testDecodingGoogleAnalyticsCookie() {
+        String source =
+            "ARPT=LWUKQPSWRTUN04CKKJI; " +
+            "kw-2E343B92-B097-442c-BFA5-BE371E0325A2=unfinished furniture; " +
+            "__utma=48461872.1094088325.1258140131.1258140131.1258140131.1; " +
+            "__utmb=48461872.13.10.1258140131; __utmc=48461872; " +
+            "__utmz=48461872.1258140131.1.1.utmcsr=overstock.com|utmccn=(referral)|utmcmd=referral|utmcct=/Home-Garden/Furniture/Clearance,/clearance,/32/dept.html";
+        Set<Cookie> cookies = new CookieDecoder().decode(source);
+        Iterator<Cookie> it = cookies.iterator();
+        Cookie c;
+
+        c = it.next();
+        assertEquals("__utma", c.getName());
+        assertEquals("48461872.1094088325.1258140131.1258140131.1258140131.1", c.getValue());
+
+        c = it.next();
+        assertEquals("__utmb", c.getName());
+        assertEquals("48461872.13.10.1258140131", c.getValue());
+
+        c = it.next();
+        assertEquals("__utmc", c.getName());
+        assertEquals("48461872", c.getValue());
+
+        c = it.next();
+        assertEquals("__utmz", c.getName());
+        assertEquals("48461872.1258140131.1.1.utmcsr=overstock.com|utmccn=(referral)|utmcmd=referral|utmcct=/Home-Garden/Furniture/Clearance,/clearance,/32/dept.html", c.getValue());
+
+        c = it.next();
+        assertEquals("ARPT", c.getName());
+        assertEquals("LWUKQPSWRTUN04CKKJI", c.getValue());
+
+        c = it.next();
+        assertEquals("kw-2E343B92-B097-442c-BFA5-BE371E0325A2", c.getName());
+        assertEquals("unfinished furniture", c.getValue());
+
+        assertFalse(it.hasNext());
     }
 }

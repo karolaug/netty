@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.http;
 
@@ -60,17 +53,45 @@ import org.jboss.netty.handler.codec.frame.TooLongFrameException;
  * </tr>
  * </table>
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * <h3>Decoding a response for a <tt>HEAD</tt> request</h3>
+ * <p>
+ * Unlike other HTTP requests, the successful response of a <tt>HEAD</tt>
+ * request does not have any content even if there is <tt>Content-Length</tt>
+ * header.  Because {@link HttpResponseDecoder} is not able to determine if the
+ * response currently being decoded is associated with a <tt>HEAD</tt> request,
+ * you must override {@link #isContentAlwaysEmpty(HttpMessage)} to return
+ * <tt>true</tt> for the response of the <tt>HEAD</tt> request.
+ * </p><p>
+ * If you are writing an HTTP client that issues a <tt>HEAD</tt> request,
+ * please use {@link HttpClientCodec} instead of this decoder.  It will perform
+ * additional state management to handle the responses for <tt>HEAD</tt>
+ * requests correctly.
+ * </p>
+ *
+ * <h3>Decoding a response for a <tt>CONNECT</tt> request</h3>
+ * <p>
+ * You also need to do additional state management to handle the response of a
+ * <tt>CONNECT</tt> request properly, like you did for <tt>HEAD</tt>.  One
+ * difference is that the decoder should stop decoding completely after decoding
+ * the successful 200 response since the connection is not an HTTP connection
+ * anymore.
+ * </p><p>
+ * {@link HttpClientCodec} also handles this edge case correctly, so you have to
+ * use {@link HttpClientCodec} if you are writing an HTTP client that issues a
+ * <tt>CONNECT</tt> request.
+ * </p>
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2225 $, $Date: 2010-03-31 04:19:45 +0200 (Wed, 31 Mar 2010) $
  */
 public class HttpResponseDecoder extends HttpMessageDecoder {
 
     /**
      * Creates a new instance with the default
-     * {@code maxInitialLineLength (4096}}, {@code maxHeaderSize (4096)}, and
-     * {@code maxChunkSize (4096)}.
+     * {@code maxInitialLineLength (4096}}, {@code maxHeaderSize (8192)}, and
+     * {@code maxChunkSize (8192)}.
      */
     public HttpResponseDecoder() {
         super();

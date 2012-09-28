@@ -1,264 +1,324 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.http;
 
-import java.net.Socket;
-import java.net.SocketException;
+import java.util.Map;
+import java.util.Map.Entry;
 
-import org.jboss.netty.channel.ChannelException;
-import org.jboss.netty.channel.DefaultChannelConfig;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLSession;
+
+import org.jboss.netty.buffer.ChannelBufferFactory;
+import org.jboss.netty.channel.ChannelConfig;
+import org.jboss.netty.channel.ChannelPipelineFactory;
+import org.jboss.netty.channel.socket.SocketChannel;
 import org.jboss.netty.channel.socket.SocketChannelConfig;
 import org.jboss.netty.util.internal.ConversionUtil;
 
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * The {@link ChannelConfig} of a client-side HTTP tunneling
+ * {@link SocketChannel}.  A {@link SocketChannel} created by
+ * {@link HttpTunnelingClientSocketChannelFactory} will return an instance of
+ * this configuration type for {@link SocketChannel#getConfig()}.
+ *
+ * <h3>Available options</h3>
+ *
+ * In addition to the options provided by {@link SocketChannelConfig},
+ * {@link HttpTunnelingSocketChannelConfig} allows the following options in
+ * the option map:
+ *
+ * <table border="1" cellspacing="0" cellpadding="6">
+ * <tr>
+ * <th>Name</th><th>Associated setter method</th>
+ * </tr><tr>
+ * <td>{@code "sslContext"}</td><td>{@link #setSslContext(SSLContext)}</td>
+ * </tr><tr>
+ * <td>{@code "enabledSslCiperSuites"}</td><td>{@link #setEnabledSslCipherSuites(String[])}</td>
+ * </tr><tr>
+ * <td>{@code "enabledSslProtocols"}</td><td>{@link #setEnabledSslProtocols(String[])}</td>
+ * </tr><tr>
+ * <td>{@code "enableSslSessionCreation"}</td><td>{@link #setEnableSslSessionCreation(boolean)}</td>
+ * </tr>
+ * </table>
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @version $Rev: 1124 $, $Date: 2009-04-03 00:41:54 -0700 (Fri, 03 Apr 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ *
+ * @apiviz.landmark
  */
-final class HttpTunnelingSocketChannelConfig extends DefaultChannelConfig
-                                       implements SocketChannelConfig {
+public final class HttpTunnelingSocketChannelConfig implements SocketChannelConfig {
 
-    final Socket socket;
-    private Integer trafficClass;
-    private Boolean tcpNoDelay;
-    private Integer soLinger;
-    private Integer sendBufferSize;
-    private Boolean reuseAddress;
-    private Integer receiveBufferSize;
-    private Integer connectionTime;
-    private Integer latency;
-    private Integer bandwidth;
-    private Boolean keepAlive;
+    private final HttpTunnelingClientSocketChannel channel;
+    private volatile String serverName;
+    private volatile String serverPath = "/netty-tunnel";
+    private volatile SSLContext sslContext;
+    private volatile String[] enabledSslCipherSuites;
+    private volatile String[] enabledSslProtocols;
+    private volatile boolean enableSslSessionCreation = true;
 
     /**
      * Creates a new instance.
      */
-    HttpTunnelingSocketChannelConfig(Socket socket) {
-        this.socket = socket;
+    HttpTunnelingSocketChannelConfig(HttpTunnelingClientSocketChannel channel) {
+        this.channel = channel;
     }
 
-    @Override
+    /**
+     * Returns the host name of the HTTP server.  If {@code null}, the
+     * {@code "Host"} header is not sent by the HTTP tunneling client.
+     */
+    public String getServerName() {
+        return serverName;
+    }
+
+    /**
+     * Sets the host name of the HTTP server.  If {@code null}, the
+     * {@code "Host"} header is not sent by the HTTP tunneling client.
+     */
+    public void setServerName(String serverName) {
+        this.serverName = serverName;
+    }
+
+    /**
+     * Returns the path where the {@link HttpTunnelingServlet} is mapped to.
+     * The default value is {@code "/netty-tunnel"}.
+     */
+    public String getServerPath() {
+        return serverPath;
+    }
+
+    /**
+     * Sets the path where the {@link HttpTunnelingServlet} is mapped to.
+     * The default value is {@code "/netty-tunnel"}.
+     */
+    public void setServerPath(String serverPath) {
+        if (serverPath == null) {
+            throw new NullPointerException("serverPath");
+        }
+        this.serverPath = serverPath;
+    }
+
+    /**
+     * Returns the {@link SSLContext} which is used to establish an HTTPS
+     * connection.  If {@code null}, a plain-text HTTP connection is established.
+     */
+    public SSLContext getSslContext() {
+        return sslContext;
+    }
+
+    /**
+     * Sets the {@link SSLContext} which is used to establish an HTTPS connection.
+     * If {@code null}, a plain-text HTTP connection is established.
+     */
+    public void setSslContext(SSLContext sslContext) {
+        this.sslContext = sslContext;
+    }
+
+    /**
+     * Returns the cipher suites enabled for use on an {@link SSLEngine}.
+     * If {@code null}, the default value will be used.
+     *
+     * @see SSLEngine#getEnabledCipherSuites()
+     */
+    public String[] getEnabledSslCipherSuites() {
+        String[] suites = enabledSslCipherSuites;
+        if (suites == null) {
+            return null;
+        } else {
+            return suites.clone();
+        }
+    }
+
+    /**
+     * Sets the cipher suites enabled for use on an {@link SSLEngine}.
+     * If {@code null}, the default value will be used.
+     *
+     * @see SSLEngine#setEnabledCipherSuites(String[])
+     */
+    public void setEnabledSslCipherSuites(String[] suites) {
+        if (suites == null) {
+            enabledSslCipherSuites = null;
+        } else {
+            enabledSslCipherSuites = suites.clone();
+        }
+    }
+
+    /**
+     * Returns the protocol versions enabled for use on an {@link SSLEngine}.
+     *
+     * @see SSLEngine#getEnabledProtocols()
+     */
+    public String[] getEnabledSslProtocols() {
+        String[] protocols = enabledSslProtocols;
+        if (protocols == null) {
+            return null;
+        } else {
+            return protocols.clone();
+        }
+    }
+
+    /**
+     * Sets the protocol versions enabled for use on an {@link SSLEngine}.
+     *
+     * @see SSLEngine#setEnabledProtocols(String[])
+     */
+    public void setEnabledSslProtocols(String[] protocols) {
+        if (protocols == null) {
+            enabledSslProtocols = null;
+        } else {
+            enabledSslProtocols = protocols.clone();
+        }
+    }
+
+    /**
+     * Returns {@code true} if new {@link SSLSession}s may be established by
+     * an {@link SSLEngine}.
+     *
+     * @see SSLEngine#getEnableSessionCreation()
+     */
+    public boolean isEnableSslSessionCreation() {
+        return enableSslSessionCreation;
+    }
+
+    /**
+     * Sets whether new {@link SSLSession}s may be established by an
+     * {@link SSLEngine}.
+     *
+     * @see SSLEngine#setEnableSessionCreation(boolean)
+     */
+    public void setEnableSslSessionCreation(boolean flag) {
+        enableSslSessionCreation = flag;
+    }
+
+    public void setOptions(Map<String, Object> options) {
+        for (Entry<String, Object> e: options.entrySet()) {
+            setOption(e.getKey(), e.getValue());
+        }
+    }
+
     public boolean setOption(String key, Object value) {
-        if (key.equals("receiveBufferSize")) {
-            setReceiveBufferSize(ConversionUtil.toInt(value));
-        } else if (key.equals("sendBufferSize")) {
-            setSendBufferSize(ConversionUtil.toInt(value));
-        } else if (key.equals("tcpNoDelay")) {
-            setTcpNoDelay(ConversionUtil.toBoolean(value));
-        } else if (key.equals("keepAlive")) {
-            setKeepAlive(ConversionUtil.toBoolean(value));
-        } else if (key.equals("reuseAddress")) {
-            setReuseAddress(ConversionUtil.toBoolean(value));
-        } else if (key.equals("soLinger")) {
-            setSoLinger(ConversionUtil.toInt(value));
-        } else if (key.equals("trafficClass")) {
-            setTrafficClass(ConversionUtil.toInt(value));
+        if (channel.realChannel.getConfig().setOption(key, value)) {
+            return true;
+        }
+
+        if (key.equals("serverName")){
+            setServerName(String.valueOf(value));
+        } else if (key.equals("serverPath")){
+            setServerPath(String.valueOf(value));
+        } else if (key.equals("sslContext")) {
+            setSslContext((SSLContext) value);
+        } else if (key.equals("enabledSslCipherSuites")){
+            setEnabledSslCipherSuites(ConversionUtil.toStringArray(value));
+        } else if (key.equals("enabledSslProtocols")){
+            setEnabledSslProtocols(ConversionUtil.toStringArray(value));
+        } else if (key.equals("enableSslSessionCreation")){
+            setEnableSslSessionCreation(ConversionUtil.toBoolean(value));
         } else {
             return false;
         }
+
         return true;
     }
 
     public int getReceiveBufferSize() {
-        try {
-            return socket.getReceiveBufferSize();
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        return channel.realChannel.getConfig().getReceiveBufferSize();
     }
 
     public int getSendBufferSize() {
-        try {
-            return socket.getSendBufferSize();
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        return channel.realChannel.getConfig().getSendBufferSize();
     }
 
     public int getSoLinger() {
-        try {
-            return socket.getSoLinger();
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        return channel.realChannel.getConfig().getSoLinger();
     }
 
     public int getTrafficClass() {
-        try {
-            return socket.getTrafficClass();
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        return channel.realChannel.getConfig().getTrafficClass();
     }
 
     public boolean isKeepAlive() {
-        try {
-            return socket.getKeepAlive();
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        return channel.realChannel.getConfig().isKeepAlive();
     }
 
     public boolean isReuseAddress() {
-        try {
-            return socket.getReuseAddress();
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        return channel.realChannel.getConfig().isReuseAddress();
     }
 
     public boolean isTcpNoDelay() {
-        try {
-            return socket.getTcpNoDelay();
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        return channel.realChannel.getConfig().isTcpNoDelay();
     }
 
     public void setKeepAlive(boolean keepAlive) {
-        this.keepAlive = keepAlive;
-        try {
-            socket.setKeepAlive(keepAlive);
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        channel.realChannel.getConfig().setKeepAlive(keepAlive);
     }
 
     public void setPerformancePreferences(
           int connectionTime, int latency, int bandwidth) {
-        this.connectionTime = connectionTime;
-        this.latency = latency;
-        this.bandwidth = bandwidth;
-        socket.setPerformancePreferences(connectionTime, latency, bandwidth);
-
+        channel.realChannel.getConfig().setPerformancePreferences(connectionTime, latency, bandwidth);
     }
 
     public void setReceiveBufferSize(int receiveBufferSize) {
-        this.receiveBufferSize = receiveBufferSize;
-        try {
-            socket.setReceiveBufferSize(receiveBufferSize);
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
-
+        channel.realChannel.getConfig().setReceiveBufferSize(receiveBufferSize);
     }
 
     public void setReuseAddress(boolean reuseAddress) {
-        this.reuseAddress = reuseAddress;
-        try {
-            socket.setReuseAddress(reuseAddress);
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
-
+        channel.realChannel.getConfig().setReuseAddress(reuseAddress);
     }
 
     public void setSendBufferSize(int sendBufferSize) {
-        this.sendBufferSize = sendBufferSize;
-        if (socket != null) {
-            try {
-                socket.setSendBufferSize(sendBufferSize);
-            }
-            catch (SocketException e) {
-                throw new ChannelException(e);
-            }
-        }
+        channel.realChannel.getConfig().setSendBufferSize(sendBufferSize);
+
     }
 
     public void setSoLinger(int soLinger) {
-        this.soLinger = soLinger;
-        try {
-            if (soLinger < 0) {
-                socket.setSoLinger(false, 0);
-            }
-            else {
-                socket.setSoLinger(true, soLinger);
-            }
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
-
+        channel.realChannel.getConfig().setSoLinger(soLinger);
     }
 
     public void setTcpNoDelay(boolean tcpNoDelay) {
-        this.tcpNoDelay = tcpNoDelay;
-        try {
-            socket.setTcpNoDelay(tcpNoDelay);
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
+        channel.realChannel.getConfig().setTcpNoDelay(tcpNoDelay);
     }
 
     public void setTrafficClass(int trafficClass) {
-        this.trafficClass = trafficClass;
-        try {
-            socket.setTrafficClass(trafficClass);
-        }
-        catch (SocketException e) {
-            throw new ChannelException(e);
-        }
-
+        channel.realChannel.getConfig().setTrafficClass(trafficClass);
     }
 
-    HttpTunnelingSocketChannelConfig copyConfig(Socket socket) {
-        HttpTunnelingSocketChannelConfig config = new HttpTunnelingSocketChannelConfig(socket);
-        config.setConnectTimeoutMillis(getConnectTimeoutMillis());
-        if (trafficClass != null) {
-            config.setTrafficClass(trafficClass);
-        }
-        if (tcpNoDelay != null) {
-            config.setTcpNoDelay(tcpNoDelay);
-        }
-        if (soLinger != null) {
-            config.setSoLinger(soLinger);
-        }
-        if (sendBufferSize != null) {
-            config.setSendBufferSize(sendBufferSize);
-        }
-        if (reuseAddress != null) {
-            config.setReuseAddress(reuseAddress);
-        }
-        if (receiveBufferSize != null) {
-            config.setReceiveBufferSize(receiveBufferSize);
-        }
-        if (keepAlive != null) {
-            config.setKeepAlive(keepAlive);
-        }
-        if (connectionTime != null) {
-            config.setPerformancePreferences(connectionTime, latency, bandwidth);
-        }
-        return config;
+    public ChannelBufferFactory getBufferFactory() {
+        return channel.realChannel.getConfig().getBufferFactory();
+    }
+
+    public int getConnectTimeoutMillis() {
+        return channel.realChannel.getConfig().getConnectTimeoutMillis();
+    }
+
+    public ChannelPipelineFactory getPipelineFactory() {
+        return channel.realChannel.getConfig().getPipelineFactory();
+    }
+
+    public void setBufferFactory(ChannelBufferFactory bufferFactory) {
+        channel.realChannel.getConfig().setBufferFactory(bufferFactory);
+    }
+
+    public void setConnectTimeoutMillis(int connectTimeoutMillis) {
+        channel.realChannel.getConfig().setConnectTimeoutMillis(connectTimeoutMillis);
+    }
+
+    public void setPipelineFactory(ChannelPipelineFactory pipelineFactory) {
+        channel.realChannel.getConfig().setPipelineFactory(pipelineFactory);
     }
 }

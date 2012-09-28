@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.buffer;
 
@@ -28,23 +21,23 @@ import static org.junit.Assert.*;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
-import java.nio.charset.UnsupportedCharsetException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.NoSuchElementException;
 import java.util.Random;
 import java.util.Set;
 
+import org.jboss.netty.util.CharsetUtil;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 /**
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1399 $, $Date: 2009-06-17 01:08:11 -0700 (Wed, 17 Jun 2009) $
+ * @version $Rev: 2309 $, $Date: 2010-06-21 09:00:03 +0200 (Mon, 21 Jun 2010) $
  */
 public abstract class AbstractChannelBufferTest {
 
@@ -57,6 +50,11 @@ public abstract class AbstractChannelBufferTest {
 
     protected abstract ChannelBuffer newBuffer(int capacity);
     protected abstract ChannelBuffer[] components();
+
+    protected boolean discardReadBytesDoesNotMoveWritableBytes() {
+        return true;
+    }
+
 
     @Before
     public void init() {
@@ -1201,6 +1199,7 @@ public abstract class AbstractChannelBufferTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     public void testSequentialCopiedBufferTransfer2() {
         buffer.clear();
         buffer.writeZero(buffer.capacity());
@@ -1251,6 +1250,7 @@ public abstract class AbstractChannelBufferTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     public void testSequentialSlice2() {
         buffer.clear();
         buffer.writeZero(buffer.capacity());
@@ -1336,13 +1336,41 @@ public abstract class AbstractChannelBufferTest {
         assertEquals(0, buffer.readerIndex());
         assertEquals(CAPACITY / 2 - 1, buffer.writerIndex());
         assertEquals(copy.slice(1, CAPACITY / 2 - 1), buffer.slice(0, CAPACITY / 2 - 1));
-        assertEquals(copy.slice(CAPACITY / 2, CAPACITY / 2), buffer.slice(CAPACITY / 2, CAPACITY / 2));
+
+        if (discardReadBytesDoesNotMoveWritableBytes()) {
+            // If writable bytes were copied, the test should fail to avoid unnecessary memory bandwidth consumption.
+            assertFalse(copy.slice(CAPACITY / 2, CAPACITY / 2).equals(buffer.slice(CAPACITY / 2 - 1, CAPACITY / 2)));
+        } else {
+            assertEquals(copy.slice(CAPACITY / 2, CAPACITY / 2), buffer.slice(CAPACITY / 2 - 1, CAPACITY / 2));
+        }
 
         // Marks also should be relocated.
         buffer.resetReaderIndex();
         assertEquals(CAPACITY / 4 - 1, buffer.readerIndex());
         buffer.resetWriterIndex();
         assertEquals(CAPACITY / 3 - 1, buffer.writerIndex());
+    }
+
+    /**
+     * The similar test case with {@link #testDiscardReadBytes()} but this one
+     * discards a large chunk at once.
+     */
+    @Test
+    public void testDiscardReadBytes2() {
+        buffer.writerIndex(0);
+        for (int i = 0; i < buffer.capacity(); i ++) {
+            buffer.writeByte((byte) i);
+        }
+        ChannelBuffer copy = copiedBuffer(buffer);
+
+        // Discard the first (CAPACITY / 2 - 1) bytes.
+        buffer.setIndex(CAPACITY / 2 - 1, CAPACITY - 1);
+        buffer.discardReadBytes();
+        assertEquals(0, buffer.readerIndex());
+        assertEquals(CAPACITY / 2, buffer.writerIndex());
+        for (int i = 0; i < CAPACITY / 2; i ++) {
+            assertEquals(copy.slice(CAPACITY / 2 - 1 + i, CAPACITY / 2 - i), buffer.slice(i, CAPACITY / 2 - i));
+        }
     }
 
     @Test
@@ -1444,8 +1472,24 @@ public abstract class AbstractChannelBufferTest {
     }
 
     @Test
-    public void testSlice() throws Exception {
+    public void testSliceEndianness() throws Exception {
+        assertEquals(buffer.order(), buffer.slice(0, buffer.capacity()).order());
+        assertEquals(buffer.order(), buffer.slice(0, buffer.capacity() - 1).order());
         assertEquals(buffer.order(), buffer.slice(1, buffer.capacity() - 1).order());
+        assertEquals(buffer.order(), buffer.slice(1, buffer.capacity() - 2).order());
+    }
+
+    @Test
+    public void testSliceIndex() throws Exception {
+        assertEquals(0, buffer.slice(0, buffer.capacity()).readerIndex());
+        assertEquals(0, buffer.slice(0, buffer.capacity() - 1).readerIndex());
+        assertEquals(0, buffer.slice(1, buffer.capacity() - 1).readerIndex());
+        assertEquals(0, buffer.slice(1, buffer.capacity() - 2).readerIndex());
+
+        assertEquals(buffer.capacity(), buffer.slice(0, buffer.capacity()).writerIndex());
+        assertEquals(buffer.capacity() - 1, buffer.slice(0, buffer.capacity() - 1).writerIndex());
+        assertEquals(buffer.capacity() - 1, buffer.slice(1, buffer.capacity() - 1).writerIndex());
+        assertEquals(buffer.capacity() - 2, buffer.slice(1, buffer.capacity() - 2).writerIndex());
     }
 
     @Test
@@ -1508,25 +1552,9 @@ public abstract class AbstractChannelBufferTest {
 
     @Test
     public void testToString() {
-        try {
-            buffer.toString("UnsupportedCharsetName");
-            fail();
-        } catch (UnsupportedCharsetException e) {
-            // Expected
-        }
-
         buffer.clear();
-        buffer.writeBytes(copiedBuffer("Hello, World!", "ISO-8859-1"));
-        assertEquals("Hello, World!", buffer.toString("ISO-8859-1"));
-
-        // Same with the previous one
-        assertEquals("Hello, World!", buffer.toString("ISO-8859-1", null));
-
-        // NUL not found.
-        assertEquals("Hello, World!", buffer.toString("ISO-8859-1", ChannelBufferIndexFinder.NUL));
-
-        // Linear space found.
-        assertEquals("Hello,", buffer.toString("ISO-8859-1", ChannelBufferIndexFinder.LINEAR_WHITESPACE));
+        buffer.writeBytes(copiedBuffer("Hello, World!", CharsetUtil.ISO_8859_1));
+        assertEquals("Hello, World!", buffer.toString(CharsetUtil.ISO_8859_1));
     }
 
     @Test
@@ -1631,6 +1659,7 @@ public abstract class AbstractChannelBufferTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     public void testSkipBytes2() {
         buffer.clear();
         buffer.writeZero(buffer.capacity());

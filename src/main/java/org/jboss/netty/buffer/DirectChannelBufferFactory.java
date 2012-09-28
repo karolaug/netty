@@ -1,28 +1,22 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.buffer;
 
 import java.lang.ref.ReferenceQueue;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
@@ -36,9 +30,9 @@ import java.nio.ByteOrder;
  * this problem by allocating a large chunk of pre-allocated direct buffer and
  * reducing the number of the garbage collected internal direct buffer objects.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 877 $, $Date: 2009-02-12 22:25:29 -0800 (Thu, 12 Feb 2009) $
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2293 $, $Date: 2010-06-01 10:38:51 +0200 (Tue, 01 Jun 2010) $
  */
 public class DirectChannelBufferFactory extends AbstractChannelBufferFactory {
 
@@ -136,6 +130,37 @@ public class DirectChannelBufferFactory extends AbstractChannelBufferFactory {
         return slice;
     }
 
+    public ChannelBuffer getBuffer(ByteOrder order, byte[] array, int offset, int length) {
+        if (array == null) {
+            throw new NullPointerException("array");
+        }
+        if (offset < 0) {
+            throw new IndexOutOfBoundsException("offset: " + offset);
+        }
+        if (length == 0) {
+            return ChannelBuffers.EMPTY_BUFFER;
+        }
+        if (offset + length > array.length) {
+            throw new IndexOutOfBoundsException("length: " + length);
+        }
+
+        ChannelBuffer buf = getBuffer(order, length);
+        buf.writeBytes(array, offset, length);
+        return buf;
+    }
+
+    public ChannelBuffer getBuffer(ByteBuffer nioBuffer) {
+        if (!nioBuffer.isReadOnly() && nioBuffer.isDirect()) {
+            return ChannelBuffers.wrappedBuffer(nioBuffer);
+        }
+
+        ChannelBuffer buf = getBuffer(nioBuffer.order(), nioBuffer.remaining());
+        int pos = nioBuffer.position();
+        buf.writeBytes(nioBuffer);
+        nioBuffer.position(pos);
+        return buf;
+    }
+
     private ChannelBuffer allocateBigEndianBuffer(int capacity) {
         ChannelBuffer slice;
         synchronized (bigEndianLock) {
@@ -155,7 +180,7 @@ public class DirectChannelBufferFactory extends AbstractChannelBufferFactory {
         return slice;
     }
 
-    private synchronized ChannelBuffer allocateLittleEndianBuffer(int capacity) {
+    private ChannelBuffer allocateLittleEndianBuffer(int capacity) {
         ChannelBuffer slice;
         synchronized (littleEndianLock) {
             if (preallocatedLittleEndianBuffer == null) {

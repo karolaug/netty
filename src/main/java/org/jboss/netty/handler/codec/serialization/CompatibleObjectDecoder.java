@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.serialization;
 
@@ -32,7 +25,6 @@ import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.handler.codec.replay.ReplayingDecoder;
-import org.jboss.netty.util.internal.SwitchableInputStream;
 
 /**
  * A decoder which deserializes the received {@link ChannelBuffer}s into Java
@@ -58,16 +50,16 @@ import org.jboss.netty.util.internal.SwitchableInputStream;
  *             {@link ObjectDecoderInputStream} respectively.  This workaround
  *             requires both a client and a server to be modified.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1324 $, $Date: 2009-06-03 23:15:44 -0700 (Wed, 03 Jun 2009) $
+ * @version $Rev: 2188 $, $Date: 2010-02-19 10:00:00 +0100 (Fri, 19 Feb 2010) $
  */
 @Deprecated
 public class CompatibleObjectDecoder extends ReplayingDecoder<CompatibleObjectDecoderState> {
 
     private final SwitchableInputStream bin = new SwitchableInputStream();
-    private volatile ObjectInputStream oin;
+    private ObjectInputStream oin;
 
     /**
      * Creates a new decoder.

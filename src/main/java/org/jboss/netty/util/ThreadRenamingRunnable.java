@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.util;
 
@@ -28,12 +21,16 @@ import org.jboss.netty.logging.InternalLoggerFactory;
 
 /**
  * A {@link Runnable} that changes the current thread name and reverts it back
- * when its execution ends.
+ * when its execution ends.  To change the default thread names set by Netty,
+ * use {@link #setThreadNameDeterminer(ThreadNameDeterminer)}.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1396 $, $Date: 2009-06-16 22:39:19 -0700 (Tue, 16 Jun 2009) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ *
+ * @apiviz.landmark
+ * @apiviz.has org.jboss.netty.util.ThreadNameDeterminer oneway - -
  *
  */
 public class ThreadRenamingRunnable implements Runnable {
@@ -42,12 +39,7 @@ public class ThreadRenamingRunnable implements Runnable {
         InternalLoggerFactory.getInstance(ThreadRenamingRunnable.class);
 
     private static volatile ThreadNameDeterminer threadNameDeterminer =
-        new ThreadNameDeterminer() {
-            public String determineThreadName(
-                    String oldThreadName, String newThreadName) throws Exception {
-                return newThreadName;
-            }
-        };
+        ThreadNameDeterminer.PROPOSED;
 
     /**
      * Returns the {@link ThreadNameDeterminer} which overrides the proposed
@@ -59,7 +51,13 @@ public class ThreadRenamingRunnable implements Runnable {
 
     /**
      * Sets the {@link ThreadNameDeterminer} which overrides the proposed new
-     * thread name.
+     * thread name.  Please note that the specified {@link ThreadNameDeterminer}
+     * affects only new {@link ThreadRenamingRunnable}s; the existing instances
+     * are not affected at all.  Therefore, you should make sure to call this
+     * method at the earliest possible point (i.e. before any Netty worker
+     * thread starts) for consistent thread naming.  Otherwise, you might see
+     * the default thread names and the new names appear at the same time in
+     * the full thread dump.
      */
     public static void setThreadNameDeterminer(ThreadNameDeterminer threadNameDeterminer) {
         if (threadNameDeterminer == null) {

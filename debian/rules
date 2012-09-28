@@ -8,7 +8,7 @@ DEB_ANT_BUILDFILE    := debian/build.xml
 DEB_ANT_ARGS         := -DartifactVersion=$(DEB_UPSTREAM_VERSION) \
                         -DartifactId=$(DEB_SOURCE_PACKAGE)
 DEB_JARS             := commons-logging log4j-1.2 servlet-api-2.5 \
-                        slf4j-api slf4j-log4j12
+                        slf4j-api slf4j-log4j12 protobuf.jar
 
 binary-post-install/lib$(DEB_SOURCE_PACKAGE)-java::
 	dh_install -plib$(DEB_SOURCE_PACKAGE)-java build/$(DEB_SOURCE_PACKAGE)-$(DEB_UPSTREAM_VERSION).jar usr/share/java

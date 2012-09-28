@@ -1,30 +1,20 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
-import static org.jboss.netty.channel.ChannelPipelineCoverage.*;
-
-import java.lang.annotation.AnnotationFormatError;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -38,16 +28,16 @@ import org.jboss.netty.logging.InternalLoggerFactory;
  * to use {@link Channels#pipeline()} to create a new {@link ChannelPipeline}
  * instance rather than calling the constructor directly.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1212 $, $Date: 2009-04-17 01:18:28 -0700 (Fri, 17 Apr 2009) $
+ * @version $Rev: 2119 $, $Date: 2010-02-01 12:46:09 +0100 (Mon, 01 Feb 2010) $
  *
  */
 public class DefaultChannelPipeline implements ChannelPipeline {
 
     static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultChannelPipeline.class);
-    private static final ChannelSink discardingSink = new DiscardingChannelSink();
+    static final ChannelSink discardingSink = new DiscardingChannelSink();
 
     private volatile Channel channel;
     private volatile ChannelSink sink;
@@ -334,10 +324,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             return;
         }
 
-        if (!isAttached()) {
-            return;
-        }
-
         LifeCycleAwareChannelHandler h =
             (LifeCycleAwareChannelHandler) ctx.getHandler();
 
@@ -352,10 +338,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     private void callAfterAdd(ChannelHandlerContext ctx) {
         if (!(ctx.getHandler() instanceof LifeCycleAwareChannelHandler)) {
-            return;
-        }
-
-        if (!isAttached()) {
             return;
         }
 
@@ -390,10 +372,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             return;
         }
 
-        if (!isAttached()) {
-            return;
-        }
-
         LifeCycleAwareChannelHandler h =
             (LifeCycleAwareChannelHandler) ctx.getHandler();
 
@@ -408,10 +386,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     private void callAfterRemove(ChannelHandlerContext ctx) {
         if (!(ctx.getHandler() instanceof LifeCycleAwareChannelHandler)) {
-            return;
-        }
-
-        if (!isAttached()) {
             return;
         }
 
@@ -492,6 +466,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     public synchronized ChannelHandlerContext getContext(
             Class<? extends ChannelHandler> handlerType) {
+        if (handlerType == null) {
+            throw new NullPointerException("handlerType");
+        }
+
         if (name2ctx.isEmpty()) {
             return null;
         }
@@ -649,9 +627,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     private void init(String name, ChannelHandler handler) {
         DefaultChannelHandlerContext ctx = new DefaultChannelHandlerContext(null, null, name, handler);
+        callBeforeAdd(ctx);
         head = tail = ctx;
         name2ctx.clear();
         name2ctx.put(name, ctx);
+        callAfterAdd(ctx);
     }
 
     private void checkDuplicateName(String name) {
@@ -715,35 +695,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                         "handler must be either " +
                         ChannelUpstreamHandler.class.getName() + " or " +
                         ChannelDownstreamHandler.class.getName() + '.');
-            }
-
-
-            ChannelPipelineCoverage coverage = handler.getClass().getAnnotation(ChannelPipelineCoverage.class);
-            if (coverage == null) {
-                logger.warn(
-                        "Handler '" + handler.getClass().getName() +
-                        "' does not have a '" +
-                        ChannelPipelineCoverage.class.getSimpleName() +
-                        "' annotation with its class declaration. " +
-                        "It is strongly recommended to add the annotation " +
-                        "for a documentation purpose to tell if a single " +
-                        "handler instance can handle more than one pipeline " +
-                        "(\"" + ALL + "\") or not (\"" + ONE + "\")");
-            } else {
-                String coverageValue = coverage.value();
-                if (coverageValue == null) {
-                    throw new AnnotationFormatError(
-                            ChannelPipelineCoverage.class.getSimpleName() +
-                            " annotation value is undefined for type: " +
-                            handler.getClass().getName());
-                }
-
-                if (!coverageValue.equals(ALL) && !coverageValue.equals(ONE)) {
-                    throw new AnnotationFormatError(
-                            ChannelPipelineCoverage.class.getSimpleName() +
-                            " annotation value: " + coverageValue +
-                            " (must be either \"" + ALL + "\" or \"" + ONE + ")");
-                }
             }
 
             this.prev = prev;

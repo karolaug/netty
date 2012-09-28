@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
@@ -37,10 +30,10 @@ import java.util.EventListener;
  * to perform a blocking operation on I/O completion, try to execute the
  * operation in a different thread using a thread pool.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1405 $, $Date: 2009-06-17 02:13:10 -0700 (Wed, 17 Jun 2009) $
+ * @version $Rev: 2185 $, $Date: 2010-02-19 06:13:48 +0100 (Fri, 19 Feb 2010) $
  */
 public interface ChannelFutureListener extends EventListener {
 
@@ -70,8 +63,8 @@ public interface ChannelFutureListener extends EventListener {
      * Invoked when the I/O operation associated with the {@link ChannelFuture}
      * has been completed.
      *
-     * @param future  The source {@link ChannelFuture} which called this
-     *                callback.
+     * @param future  the source {@link ChannelFuture} which called this
+     *                callback
      */
     void operationComplete(ChannelFuture future) throws Exception;
 }

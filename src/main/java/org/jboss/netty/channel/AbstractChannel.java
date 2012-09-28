@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
@@ -30,10 +23,10 @@ import org.jboss.netty.util.internal.ConcurrentHashMap;
 /**
  * A skeletal {@link Channel} implementation.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1124 $, $Date: 2009-04-03 00:41:54 -0700 (Fri, 03 Apr 2009) $
+ * @version $Rev: 2339 $, $Date: 2010-07-07 06:36:25 +0200 (Wed, 07 Jul 2010) $
  *
  */
 public abstract class AbstractChannel implements Channel {
@@ -66,15 +59,16 @@ public abstract class AbstractChannel implements Channel {
         }
     }
 
-    private final Integer id = allocateId(this);
+    private final Integer id;
     private final Channel parent;
     private final ChannelFactory factory;
     private final ChannelPipeline pipeline;
     private final ChannelFuture succeededFuture = new SucceededChannelFuture(this);
-    private final ChannelFuture closeFuture = new UnfailingChannelFuture(this, false);
+    private final ChannelCloseFuture closeFuture = new ChannelCloseFuture();
     private volatile int interestOps = OP_READ;
 
     /** Cache for the string representation of this channel */
+    private boolean strValConnected;
     private String strVal;
 
     /**
@@ -97,7 +91,36 @@ public abstract class AbstractChannel implements Channel {
         this.parent = parent;
         this.factory = factory;
         this.pipeline = pipeline;
+
+        id = allocateId(this);
         closeFuture.addListener(ID_DEALLOCATOR);
+
+        pipeline.attach(this, sink);
+    }
+
+    /**
+     * (Internal use only) Creates a new temporary instance with the specified
+     * ID.
+     *
+     * @param parent
+     *        the parent of this channel. {@code null} if there's no parent.
+     * @param factory
+     *        the factory which created this channel
+     * @param pipeline
+     *        the pipeline which is going to be attached to this channel
+     * @param sink
+     *        the sink which will receive downstream events from the pipeline
+     *        and send upstream events to the pipeline
+     */
+    protected AbstractChannel(
+            Integer id,
+            Channel parent, ChannelFactory factory,
+            ChannelPipeline pipeline, ChannelSink sink) {
+
+        this.id = id;
+        this.parent = parent;
+        this.factory = factory;
+        this.pipeline = pipeline;
         pipeline.attach(this, sink);
     }
 
@@ -170,7 +193,7 @@ public abstract class AbstractChannel implements Channel {
      *                      closed yet
      */
     protected boolean setClosed() {
-        return closeFuture.setSuccess();
+        return closeFuture.setClosed();
     }
 
     public ChannelFuture bind(SocketAddress localAddress) {
@@ -249,7 +272,7 @@ public abstract class AbstractChannel implements Channel {
     @Override
     public String toString() {
         boolean connected = isConnected();
-        if (connected && strVal != null) {
+        if (strValConnected == connected && strVal != null) {
             return strVal;
         }
 
@@ -257,30 +280,29 @@ public abstract class AbstractChannel implements Channel {
         buf.append("[id: 0x");
         buf.append(getIdString());
 
-        if (connected) {
+        SocketAddress localAddress = getLocalAddress();
+        SocketAddress remoteAddress = getRemoteAddress();
+        if (remoteAddress != null) {
             buf.append(", ");
             if (getParent() == null) {
-                buf.append(getLocalAddress());
-                buf.append(" => ");
-                buf.append(getRemoteAddress());
+                buf.append(localAddress);
+                buf.append(connected? " => " : " :> ");
+                buf.append(remoteAddress);
             } else {
-                buf.append(getRemoteAddress());
-                buf.append(" => ");
-                buf.append(getLocalAddress());
+                buf.append(remoteAddress);
+                buf.append(connected? " => " : " :> ");
+                buf.append(localAddress);
             }
-        } else if (isBound()) {
+        } else if (localAddress != null) {
             buf.append(", ");
-            buf.append(getLocalAddress());
+            buf.append(localAddress);
         }
 
         buf.append(']');
 
         String strVal = buf.toString();
-        if (connected) {
-            this.strVal = strVal;
-        } else {
-            this.strVal = null;
-        }
+        this.strVal = strVal;
+        strValConnected = connected;
         return strVal;
     }
 
@@ -313,5 +335,28 @@ public abstract class AbstractChannel implements Channel {
             break;
         }
         return answer;
+    }
+
+    private final class ChannelCloseFuture extends DefaultChannelFuture {
+
+        public ChannelCloseFuture() {
+            super(AbstractChannel.this, false);
+        }
+
+        @Override
+        public boolean setSuccess() {
+            // User is not supposed to call this method - ignore silently.
+            return false;
+        }
+
+        @Override
+        public boolean setFailure(Throwable cause) {
+            // User is not supposed to call this method - ignore silently.
+            return false;
+        }
+
+        boolean setClosed() {
+            return super.setSuccess();
+        }
     }
 }

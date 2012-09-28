@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.buffer;
 
@@ -28,16 +21,17 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
+import java.nio.charset.Charset;
 import java.util.NoSuchElementException;
 
 
 /**
  * A skeletal implementation of a buffer.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1017 $, $Date: 2009-03-11 23:40:36 -0700 (Wed, 11 Mar 2009) $
+ * @version $Rev: 2211 $, $Date: 2010-03-04 07:34:00 +0100 (Thu, 04 Mar 2010) $
  */
 public abstract class AbstractChannelBuffer implements ChannelBuffer {
 
@@ -123,6 +117,12 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         readerIndex = 0;
     }
 
+    public void ensureWritableBytes(int writableBytes) {
+        if (writableBytes > writableBytes()) {
+            throw new IndexOutOfBoundsException();
+        }
+    }
+
     public short getUnsignedByte(int index) {
         return (short) (getByte(index) & 0xFF);
     }
@@ -143,6 +143,18 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         return getInt(index) & 0xFFFFFFFFL;
     }
 
+    public char getChar(int index) {
+        return (char) getShort(index);
+    }
+
+    public float getFloat(int index) {
+        return Float.intBitsToFloat(getInt(index));
+    }
+
+    public double getDouble(int index) {
+        return Double.longBitsToDouble(getLong(index));
+    }
+
     public void getBytes(int index, byte[] dst) {
         getBytes(index, dst, 0, dst.length);
     }
@@ -157,6 +169,18 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         }
         getBytes(index, dst, dst.writerIndex(), length);
         dst.writerIndex(dst.writerIndex() + length);
+    }
+
+    public void setChar(int index, int value) {
+        setShort(index, value);
+    }
+
+    public void setFloat(int index, float value) {
+        setInt(index, Float.floatToRawIntBits(value));
+    }
+
+    public void setDouble(int index, double value) {
+        setLong(index, Double.doubleToRawLongBits(value));
     }
 
     public void setBytes(int index, byte[] src) {
@@ -262,6 +286,18 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         return v;
     }
 
+    public char readChar() {
+        return (char) readShort();
+    }
+
+    public float readFloat() {
+        return Float.intBitsToFloat(readInt());
+    }
+
+    public double readDouble() {
+        return Double.longBitsToDouble(readLong());
+    }
+
     public ChannelBuffer readBytes(int length) {
         checkReadableBytes(length);
         if (length == 0) {
@@ -273,6 +309,7 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         return buf;
     }
 
+    @Deprecated
     public ChannelBuffer readBytes(ChannelBufferIndexFinder endIndexFinder) {
         int endIndex = indexOf(readerIndex, writerIndex, endIndexFinder);
         if (endIndex < 0) {
@@ -287,6 +324,7 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         return slice;
     }
 
+    @Deprecated
     public ChannelBuffer readSlice(ChannelBufferIndexFinder endIndexFinder) {
         int endIndex = indexOf(readerIndex, writerIndex, endIndexFinder);
         if (endIndex < 0) {
@@ -352,6 +390,7 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         readerIndex = newReaderIndex;
     }
 
+    @Deprecated
     public int skipBytes(ChannelBufferIndexFinder firstIndexFinder) {
         int oldReaderIndex = readerIndex;
         int newReaderIndex = indexOf(oldReaderIndex, writerIndex, firstIndexFinder);
@@ -362,11 +401,11 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         return newReaderIndex - oldReaderIndex;
     }
 
-    public void writeByte(byte value) {
+    public void writeByte(int value) {
         setByte(writerIndex ++, value);
     }
 
-    public void writeShort(short value) {
+    public void writeShort(int value) {
         setShort(writerIndex, value);
         writerIndex += 2;
     }
@@ -384,6 +423,18 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
     public void writeLong(long value) {
         setLong(writerIndex, value);
         writerIndex += 8;
+    }
+
+    public void writeChar(int value) {
+        writeShort(value);
+    }
+
+    public void writeFloat(float value) {
+        writeInt(Float.floatToRawIntBits(value));
+    }
+
+    public void writeDouble(double value) {
+        writeLong(Double.doubleToRawLongBits(value));
     }
 
     public void writeBytes(byte[] src, int srcIndex, int length) {
@@ -483,16 +534,21 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         return new ByteBuffer[] { toByteBuffer(index, length) };
     }
 
-    public String toString(String charsetName) {
-        return toString(readerIndex, readableBytes(), charsetName);
+    public String toString(Charset charset) {
+        return toString(readerIndex, readableBytes(), charset);
     }
 
-    public String toString(String charsetName, ChannelBufferIndexFinder terminatorFinder) {
-        return toString(readerIndex, readableBytes(), charsetName, terminatorFinder);
+    public String toString(int index, int length, Charset charset) {
+        if (length == 0) {
+            return "";
+        }
+
+        return ChannelBuffers.decodeString(
+                toByteBuffer(index, length), charset);
     }
 
-    public String toString(
-            int index, int length, String charsetName,
+    @Deprecated
+    public String toString(int index, int length, String charsetName,
             ChannelBufferIndexFinder terminatorFinder) {
         if (terminatorFinder == null) {
             return toString(index, length, charsetName);
@@ -506,12 +562,63 @@ public abstract class AbstractChannelBuffer implements ChannelBuffer {
         return toString(index, terminatorIndex - index, charsetName);
     }
 
+    @Deprecated
+    public String toString(int index, int length, String charsetName) {
+        return toString(index, length, Charset.forName(charsetName));
+    }
+
+    @Deprecated
+    public String toString(String charsetName,
+            ChannelBufferIndexFinder terminatorFinder) {
+        return toString(readerIndex, readableBytes(), charsetName, terminatorFinder);
+    }
+
+    @Deprecated
+    public String toString(String charsetName) {
+        return toString(Charset.forName(charsetName));
+    }
+
     public int indexOf(int fromIndex, int toIndex, byte value) {
         return ChannelBuffers.indexOf(this, fromIndex, toIndex, value);
     }
 
     public int indexOf(int fromIndex, int toIndex, ChannelBufferIndexFinder indexFinder) {
         return ChannelBuffers.indexOf(this, fromIndex, toIndex, indexFinder);
+    }
+
+    public int bytesBefore(byte value) {
+        return bytesBefore(readerIndex(), readableBytes(), value);
+    }
+
+    public int bytesBefore(ChannelBufferIndexFinder indexFinder) {
+        return bytesBefore(readerIndex(), readableBytes(), indexFinder);
+    }
+
+    public int bytesBefore(int length, byte value) {
+        checkReadableBytes(length);
+        return bytesBefore(readerIndex(), length, value);
+    }
+
+    public int bytesBefore(int length, ChannelBufferIndexFinder indexFinder) {
+        checkReadableBytes(length);
+        return bytesBefore(readerIndex(), length, indexFinder);
+    }
+
+    public int bytesBefore(int index, int length, byte value) {
+        int endIndex = indexOf(index, index + length, value);
+        if (endIndex < 0) {
+            return -1;
+        }
+        return endIndex - index;
+    }
+
+    public int bytesBefore(int index, int length,
+            ChannelBufferIndexFinder indexFinder) {
+        int endIndex = indexOf(index, index + length, indexFinder);
+        if (endIndex < 0) {
+            return -1;
+        }
+        return endIndex - index;
     }
 
     @Override

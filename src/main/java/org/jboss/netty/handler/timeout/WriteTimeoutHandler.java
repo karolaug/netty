@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.timeout;
 
@@ -26,13 +19,16 @@ import static org.jboss.netty.channel.Channels.*;
 
 import java.util.concurrent.TimeUnit;
 
+import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
+import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.ChannelPipelineFactory;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelDownstreamHandler;
+import org.jboss.netty.channel.ChannelHandler.Sharable;
 import org.jboss.netty.util.ExternalResourceReleasable;
 import org.jboss.netty.util.HashedWheelTimer;
 import org.jboss.netty.util.Timeout;
@@ -43,15 +39,45 @@ import org.jboss.netty.util.TimerTask;
  * Raises a {@link WriteTimeoutException} when no data was written within a
  * certain period of time.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1466 $, $Date: 2009-06-19 04:40:28 -0700 (Fri, 19 Jun 2009) $
+ * <pre>
+ * public class MyPipelineFactory implements {@link ChannelPipelineFactory} {
  *
- * @see HashedWheelTimer
+ *     private final {@link Timer} timer;
+ *
+ *     public MyPipelineFactory({@link Timer} timer) {
+ *         this.timer = timer;
+ *     }
+ *
+ *     public {@link ChannelPipeline} getPipeline() {
+ *         // An example configuration that implements 30-second write timeout:
+ *         return {@link Channels}.pipeline(
+ *             <b>new {@link WriteTimeoutHandler}(timer, 30), // timer must be shared.</b>
+ *             new MyHandler());
+ *     }
+ * }
+ *
+ * {@link ServerBootstrap} bootstrap = ...;
+ * {@link Timer} timer = new {@link HashedWheelTimer}();
+ * ...
+ * bootstrap.setPipelineFactory(new MyPipelineFactory(timer));
+ * </pre>
+ *
+ * The {@link Timer} which was specified when the {@link ReadTimeoutHandler} is
+ * created should be stopped manually by calling {@link #releaseExternalResources()}
+ * or {@link Timer#stop()} when your application shuts down.
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2222 $, $Date: 2010-03-24 06:07:27 +0100 (Wed, 24 Mar 2010) $
+ *
  * @see ReadTimeoutHandler
  * @see IdleStateHandler
+ *
+ * @apiviz.landmark
+ * @apiviz.uses org.jboss.netty.util.HashedWheelTimer
+ * @apiviz.has org.jboss.netty.handler.timeout.TimeoutException oneway - - raises
  */
-@ChannelPipelineCoverage("all")
+@Sharable
 public class WriteTimeoutHandler extends SimpleChannelDownstreamHandler
                                  implements ExternalResourceReleasable {
 
@@ -93,7 +119,11 @@ public class WriteTimeoutHandler extends SimpleChannelDownstreamHandler
         }
 
         this.timer = timer;
-        timeoutMillis = unit.toMillis(timeout);
+        if (timeout <= 0) {
+            timeoutMillis = 0;
+        } else {
+            timeoutMillis = Math.max(unit.toMillis(timeout), 1);
+        }
     }
 
     /**
@@ -163,9 +193,9 @@ public class WriteTimeoutHandler extends SimpleChannelDownstreamHandler
     }
 
     /**
-     * @author The Netty Project (netty-dev@lists.jboss.org)
-     * @author Trustin Lee (tlee@redhat.com)
-     * @version $Rev: 1466 $, $Date: 2009-06-19 04:40:28 -0700 (Fri, 19 Jun 2009) $
+     * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+     * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+     * @version $Rev: 2222 $, $Date: 2010-03-24 06:07:27 +0100 (Wed, 24 Mar 2010) $
      */
     private static final class TimeoutCanceller implements ChannelFutureListener {
         private final Timeout timeout;

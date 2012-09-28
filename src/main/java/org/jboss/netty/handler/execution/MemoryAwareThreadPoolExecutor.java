@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.execution;
 
@@ -32,15 +25,15 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelEvent;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelState;
 import org.jboss.netty.channel.ChannelStateEvent;
+import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.WriteCompletionEvent;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
@@ -48,19 +41,74 @@ import org.jboss.netty.util.DefaultObjectSizeEstimator;
 import org.jboss.netty.util.ObjectSizeEstimator;
 import org.jboss.netty.util.internal.ConcurrentIdentityHashMap;
 import org.jboss.netty.util.internal.LinkedTransferQueue;
+import org.jboss.netty.util.internal.SharedResourceMisuseDetector;
 
 /**
  * A {@link ThreadPoolExecutor} which blocks the task submission when there's
- * too many tasks in the queue.
+ * too many tasks in the queue.  Both per-{@link Channel} and per-{@link Executor}
+ * limitation can be applied.
  * <p>
- * Both per-{@link Channel} and per-{@link Executor} limitation can be applied.
- * If the total size of the unprocessed tasks (i.e. {@link Runnable}s) exceeds
- * either per-{@link Channel} or per-{@link Executor} threshold, any further
- * {@link #execute(Runnable)} call will block until the tasks in the queue
- * are processed so that the total size goes under the threshold.
+ * When a task (i.e. {@link Runnable}) is submitted,
+ * {@link MemoryAwareThreadPoolExecutor} calls {@link ObjectSizeEstimator#estimateSize(Object)}
+ * to get the estimated size of the task in bytes to calculate the amount of
+ * memory occupied by the unprocessed tasks.
  * <p>
- * {@link ObjectSizeEstimator} is used to calculate the size of each task.
- * <p>
+ * If the total size of the unprocessed tasks exceeds either per-{@link Channel}
+ * or per-{@link Executor} threshold, any further {@link #execute(Runnable)}
+ * call will block until the tasks in the queue are processed so that the total
+ * size goes under the threshold.
+ *
+ * <h3>Using an alternative task size estimation strategy</h3>
+ *
+ * Although the default implementation does its best to guess the size of an
+ * object of unknown type, it is always good idea to to use an alternative
+ * {@link ObjectSizeEstimator} implementation instead of the
+ * {@link DefaultObjectSizeEstimator} to avoid incorrect task size calculation,
+ * especially when:
+ * <ul>
+ *   <li>you are using {@link MemoryAwareThreadPoolExecutor} independently from
+ *       {@link ExecutionHandler},</li>
+ *   <li>you are submitting a task whose type is not {@link ChannelEventRunnable}, or</li>
+ *   <li>the message type of the {@link MessageEvent} in the {@link ChannelEventRunnable}
+ *       is not {@link ChannelBuffer}.</li>
+ * </ul>
+ * Here is an example that demonstrates how to implement an {@link ObjectSizeEstimator}
+ * which understands a user-defined object:
+ * <pre>
+ * public class MyRunnable implements {@link Runnable} {
+ *
+ *     <b>private final byte[] data;</b>
+ *
+ *     public MyRunnable(byte[] data) {
+ *         this.data = data;
+ *     }
+ *
+ *     public void run() {
+ *         // Process 'data' ..
+ *     }
+ * }
+ *
+ * public class MyObjectSizeEstimator extends {@link DefaultObjectSizeEstimator} {
+ *
+ *     {@literal @Override}
+ *     public int estimateSize(Object o) {
+ *         if (<b>o instanceof MyRunnable</b>) {
+ *             <b>return ((MyRunnable) o).data.length + 8;</b>
+ *         }
+ *         return super.estimateSize(o);
+ *     }
+ * }
+ *
+ * {@link ThreadPoolExecutor} pool = new {@link MemoryAwareThreadPoolExecutor}(
+ *         16, 65536, 1048576, 30, {@link TimeUnit}.SECONDS,
+ *         <b>new MyObjectSizeEstimator()</b>,
+ *         {@link Executors}.defaultThreadFactory());
+ *
+ * <b>pool.execute(new MyRunnable(data));</b>
+ * </pre>
+ *
+ * <h3>Event execution order</h3>
+ *
  * Please note that this executor does not maintain the order of the
  * {@link ChannelEvent}s for the same {@link Channel}.  For example,
  * you can even receive a {@code "channelClosed"} event before a
@@ -80,23 +128,21 @@ import org.jboss.netty.util.internal.LinkedTransferQueue;
  *
  * To maintain the event order, you must use {@link OrderedMemoryAwareThreadPoolExecutor}.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1330 $, $Date: 2009-06-05 00:05:20 -0700 (Fri, 05 Jun 2009) $
+ * @version $Rev: 2351 $, $Date: 2010-08-26 04:55:10 +0200 (Thu, 26 Aug 2010) $
  *
- * @apiviz.uses org.jboss.netty.util.ObjectSizeEstimator
- * @apiviz.uses org.jboss.netty.handler.execution.ChannelEventRunnable
+ * @apiviz.has org.jboss.netty.util.ObjectSizeEstimator oneway - -
+ * @apiviz.has org.jboss.netty.handler.execution.ChannelEventRunnable oneway - - executes
  */
 public class MemoryAwareThreadPoolExecutor extends ThreadPoolExecutor {
 
     private static final InternalLogger logger =
         InternalLoggerFactory.getInstance(MemoryAwareThreadPoolExecutor.class);
 
-    // I'd say 64 active event thread pools are obvious misuse.
-    private static final int MISUSE_WARNING_THRESHOLD = 64;
-    private static final AtomicInteger activeInstances = new AtomicInteger();
-    private static final AtomicBoolean loggedMisuseWarning = new AtomicBoolean();
+    private static final SharedResourceMisuseDetector misuseDetector =
+        new SharedResourceMisuseDetector(MemoryAwareThreadPoolExecutor.class);
 
     private volatile Settings settings;
 
@@ -207,22 +253,13 @@ public class MemoryAwareThreadPoolExecutor extends ThreadPoolExecutor {
                 objectSizeEstimator, maxChannelMemorySize, maxTotalMemorySize);
 
         // Misuse check
-        int activeInstances = MemoryAwareThreadPoolExecutor.activeInstances.incrementAndGet();
-        if (activeInstances >= MISUSE_WARNING_THRESHOLD &&
-            loggedMisuseWarning.compareAndSet(false, true)) {
-            logger.debug(
-                    "There are too many active " +
-                    MemoryAwareThreadPoolExecutor.class.getSimpleName() +
-                    " instances (" + activeInstances + ") - you should share " +
-                    "the small number of instances to avoid excessive resource " +
-                    "consumption.");
-        }
+        misuseDetector.increase();
     }
 
     @Override
     protected void terminated() {
         super.terminated();
-        activeInstances.decrementAndGet();
+        misuseDetector.decrease();
     }
 
     /**
@@ -401,7 +438,9 @@ public class MemoryAwareThreadPoolExecutor extends ThreadPoolExecutor {
         //System.out.println("D: " + totalCounter + ", " + increment);
         if (maxTotalMemorySize != 0 && totalCounter + increment >= maxTotalMemorySize) {
             //System.out.println("RELEASE: " + task);
-            semaphore.release();
+            while (semaphore.hasQueuedThreads()) {
+                semaphore.release();
+            }
         }
 
         if (task instanceof ChannelEventRunnable) {
@@ -492,7 +531,7 @@ public class MemoryAwareThreadPoolExecutor extends ThreadPoolExecutor {
 
     private static final class MemoryAwareRunnable implements Runnable {
         final Runnable task;
-        volatile int estimatedSize;
+        int estimatedSize;
 
         MemoryAwareRunnable(Runnable task) {
             this.task = task;

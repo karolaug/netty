@@ -1,45 +1,72 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
+
 /**
- * Provides the properties and operations which are specific to a
- * {@link ChannelHandler} and the {@link ChannelPipeline} it belongs to.
- * Via a {@link ChannelHandlerContext}, a {@link ChannelHandler} can send
- * an upstream or downstream {@link ChannelEvent} to the next or previous
- * {@link ChannelHandler} in a pipeline, modify the behavior of the pipeline,
- * or store the information (attachment) which is specific to the handler.
- * <pre>
- *         <b>n</b> = the number of the handler entries in a pipeline
+ * Enables a {@link ChannelHandler} to interact with its {@link ChannelPipeline}
+ * and other handlers.  A handler can send a {@link ChannelEvent} upstream or
+ * downstream, modify the {@link ChannelPipeline} it belongs to dynamically.
  *
- * +---------+ 1 .. 1 +----------+ 1    n +---------+ n    m +---------+
- * | Channel |--------| Pipeline |--------| Context |--------| Handler |
- * +---------+        +----------+        +----+----+        +----+----+
- *                                             | 1..1             |
- *                                       +-----+------+           |
- *                                       | Attachment |<----------+
- *                                       +------------+    stores
+ * <h3>Sending an event</h3>
+ *
+ * You can send or forward a {@link ChannelEvent} to the closest handler in the
+ * same {@link ChannelPipeline} by calling {@link #sendUpstream(ChannelEvent)}
+ * or {@link #sendDownstream(ChannelEvent)}.  Please refer to
+ * {@link ChannelPipeline} to understand how an event flows.
+ *
+ * <h3>Modifying a pipeline</h3>
+ *
+ * You can get the {@link ChannelPipeline} your handler belongs to by calling
+ * {@link #getPipeline()}.  A non-trivial application could insert, remove, or
+ * replace handlers in the pipeline dynamically in runtime.
+ *
+ * <h3>Retrieving for later use</h3>
+ *
+ * You can keep the {@link ChannelHandlerContext} for later use, such as
+ * triggering an event outside the handler methods, even from a different thread.
+ * <pre>
+ * public class MyHandler extends {@link SimpleChannelHandler}
+ *                        implements {@link LifeCycleAwareChannelHandler} {
+ *
+ *     <b>private {@link ChannelHandlerContext} ctx;</b>
+ *
+ *     public void beforeAdd({@link ChannelHandlerContext} ctx) {
+ *         <b>this.ctx = ctx;</b>
+ *     }
+ *
+ *     public void login(String username, password) {
+ *         {@link Channels}.write(
+ *                 <b>this.ctx</b>,
+ *                 {@link Channels}.succeededFuture(<b>this.ctx</t>.getChannel()),
+ *                 new LoginMessage(username, password));
+ *     }
+ *     ...
+ * }
  * </pre>
+ *
+ * <h3>Storing stateful information</h3>
+ *
+ * {@link #setAttachment(Object)} and {@link #getAttachment()} allow you to
+ * store and access stateful information that is related with a handler and its
+ * context.  Please refer to {@link ChannelHandler} to learn various recommended
+ * ways to manage stateful information.
+ *
+ * <h3>A handler can have more than one context</h3>
+ *
  * Please note that a {@link ChannelHandler} instance can be added to more than
  * one {@link ChannelPipeline}.  It means a single {@link ChannelHandler}
  * instance can have more than one {@link ChannelHandlerContext} and therefore
@@ -51,11 +78,12 @@ package org.jboss.netty.channel;
  * as how many times it is added to pipelines, regardless if it is added to the
  * same pipeline multiple times or added to different pipelines multiple times:
  * <pre>
- * public class FactorialHandler extends SimpleUpstreamChannelHandler {
+ * public class FactorialHandler extends {@link SimpleChannelHandler} {
  *
  *   // This handler will receive a sequence of increasing integers starting
  *   // from 1.
- *   public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) {
+ *   {@code @Override}
+ *   public void messageReceived({@link ChannelHandlerContext} ctx, {@link MessageEvent} evt) {
  *     Integer a = (Integer) ctx.getAttachment();
  *     Integer b = (Integer) evt.getMessage();
  *
@@ -73,11 +101,11 @@ package org.jboss.netty.channel;
  * // calculated correctly 4 times once the two pipelines (p1 and p2) are active.
  * FactorialHandler fh = new FactorialHandler();
  *
- * ChannelPipeline p1 = Channels.pipeline();
+ * {@link ChannelPipeline} p1 = {@link Channels}.pipeline();
  * p1.addLast("f1", fh);
  * p1.addLast("f2", fh);
  *
- * ChannelPipeline p2 = Channels.pipeline();
+ * {@link ChannelPipeline} p2 = {@link Channels}.pipeline();
  * p2.addLast("f3", fh);
  * p2.addLast("f4", fh);
  * </pre>
@@ -86,13 +114,13 @@ package org.jboss.netty.channel;
  * <p>
  * Please refer to the {@link ChannelHandler}, {@link ChannelEvent}, and
  * {@link ChannelPipeline} to find out what a upstream event and a downstream
- * event are, what fundamental differences they have, and how they flow in a
- * pipeline.
+ * event are, what fundamental differences they have, how they flow in a
+ * pipeline,  and how to handle the event in your application.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1407 $, $Date: 2009-06-17 02:49:05 -0700 (Wed, 17 Jun 2009) $
+ * @version $Rev: 2157 $, $Date: 2010-02-17 09:37:38 +0100 (Wed, 17 Feb 2010) $
  *
  * @apiviz.owns org.jboss.netty.channel.ChannelHandler
  */
@@ -135,26 +163,26 @@ public interface ChannelHandlerContext {
     boolean canHandleDownstream();
 
     /**
-     * Sends the specified {@link ChannelEvent} to the next
-     * {@link ChannelUpstreamHandler} in the {@link ChannelPipeline}.  It is
-     * recommended to use the event generation methods in {@link Channels}
-     * rather than calling this method directly.
+     * Sends the specified {@link ChannelEvent} to the
+     * {@link ChannelUpstreamHandler} which is placed in the closest upstream
+     * from the handler associated with this context.  It is recommended to use
+     * the shortcut methods in {@link Channels} rather than calling this method
+     * directly.
      */
     void sendUpstream(ChannelEvent e);
 
     /**
-     * Sends the specified {@link ChannelEvent} to the previous
-     * {@link ChannelDownstreamHandler} in the {@link ChannelPipeline}.  It is
-     * recommended to use the event generation methods in {@link Channels}
-     * rather than calling this method directly.
+     * Sends the specified {@link ChannelEvent} to the
+     * {@link ChannelDownstreamHandler} which is placed in the closest
+     * downstream from the handler associated with this context.  It is
+     * recommended to use the shortcut methods in {@link Channels} rather than
+     * calling this method directly.
      */
     void sendDownstream(ChannelEvent e);
 
     /**
      * Retrieves an object which is {@link #setAttachment(Object) attached} to
      * this context.
-     * <p>
-     * As an alternative, you might want to use a {@link ChannelLocal} variable.
      *
      * @return {@code null} if no object was attached or
      *                      {@code null} was attached
@@ -165,8 +193,6 @@ public interface ChannelHandlerContext {
      * Attaches an object to this context to store a stateful information
      * specific to the {@link ChannelHandler} which is associated with this
      * context.
-     * <p>
-     * As an alternative, you might want to use a {@link ChannelLocal} variable.
      */
     void setAttachment(Object attachment);
 }

@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.util;
 
@@ -32,7 +25,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import org.jboss.netty.util.internal.MapBackedSet;
+import org.jboss.netty.channel.ChannelFactory;
+import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
+
 
 /**
  * A delegating {@link ExecutorService} with its own termination management.
@@ -46,10 +41,10 @@ import org.jboss.netty.util.internal.MapBackedSet;
  *
  * <pre>
  * ExecutorService globalExecutor = ...;
- * ExecutorService virtualExecutor = new VirtualExecutorService(globalExecutor);
+ * ExecutorService virtualExecutor = new {@link VirtualExecutorService}(globalExecutor);
  *
- * ChannelFactory factory =
- *         new NioServerSocketChannelFactory(virtualExecutor, virtualExecutor);
+ * {@link ChannelFactory} factory =
+ *         new {@link NioServerSocketChannelFactory}(virtualExecutor, virtualExecutor);
  * ...
  *
  * // ChannelFactory.releaseExternalResources() shuts down the executor and
@@ -77,9 +72,11 @@ import org.jboss.netty.util.internal.MapBackedSet;
  * its active tasks are finished and the threads are returned to the parent
  * {@link Executor}.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1315 $, $Date: 2009-06-03 00:48:23 -0700 (Wed, 03 Jun 2009) $
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2122 $, $Date: 2010-02-02 03:00:04 +0100 (Tue, 02 Feb 2010) $
+ *
+ * @apiviz.landmark
  */
 public class VirtualExecutorService extends AbstractExecutorService {
 

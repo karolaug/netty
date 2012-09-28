@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.nio;
 
@@ -42,20 +35,18 @@ import org.jboss.netty.channel.MessageEvent;
  * Receives downstream events from a {@link ChannelPipeline}.  It contains
  * an array of I/O workers.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  * @author Daniel Bevenius (dbevenius@jboss.com)
  *
- * @version $Rev: 1411 $, $Date: 2009-06-18 00:33:37 -0700 (Thu, 18 Jun 2009) $
+ * @version $Rev: 2340 $, $Date: 2010-07-07 06:37:10 +0200 (Wed, 07 Jul 2010) $
  */
 class NioDatagramPipelineSink extends AbstractChannelSink {
 
     private static final AtomicInteger nextId = new AtomicInteger();
 
     private final int id = nextId.incrementAndGet();
-
     private final NioDatagramWorker[] workers;
-
     private final AtomicInteger workerIndex = new AtomicInteger();
 
     /**
@@ -63,7 +54,10 @@ class NioDatagramPipelineSink extends AbstractChannelSink {
      * The {@link NioDatagramWorker}s take care of reading and writing for the {@link NioDatagramChannel}.
      *
      * @param workerExecutor
-     * @param workerCount The number of UdpWorkers for this sink.
+     *        the {@link Executor} that will run the {@link NioDatagramWorker}s
+     *        for this sink
+     * @param workerCount
+     *        the number of {@link NioDatagramWorker}s for this sink
      */
     NioDatagramPipelineSink(final Executor workerExecutor, final int workerCount) {
         workers = new NioDatagramWorker[workerCount];
@@ -90,14 +84,14 @@ class NioDatagramPipelineSink extends AbstractChannelSink {
             switch (state) {
             case OPEN:
                 if (Boolean.FALSE.equals(value)) {
-                    NioDatagramWorker.close(channel, future);
+                    channel.worker.close(channel, future);
                 }
                 break;
             case BOUND:
                 if (value != null) {
                     bind(channel, future, (InetSocketAddress) value);
                 } else {
-                    NioDatagramWorker.close(channel, future);
+                    channel.worker.close(channel, future);
                 }
                 break;
             case CONNECTED:
@@ -108,27 +102,28 @@ class NioDatagramPipelineSink extends AbstractChannelSink {
                 }
                 break;
             case INTEREST_OPS:
-                NioDatagramWorker.setInterestOps(channel, future, ((Integer) value)
-                        .intValue());
+                channel.worker.setInterestOps(channel, future, ((Integer) value).intValue());
                 break;
             }
         } else if (e instanceof MessageEvent) {
             final MessageEvent event = (MessageEvent) e;
             final boolean offered = channel.writeBufferQueue.offer(event);
             assert offered;
-            NioDatagramWorker.write(channel, true);
+            channel.worker.writeFromUserCode(channel);
         }
     }
 
     private void close(NioDatagramChannel channel, ChannelFuture future) {
         try {
             channel.getDatagramChannel().socket().close();
-            future.setSuccess();
             if (channel.setClosed()) {
+                future.setSuccess();
                 if (channel.isBound()) {
                     fireChannelUnbound(channel);
                 }
                 fireChannelClosed(channel);
+            } else {
+                future.setSuccess();
             }
         } catch (final Throwable t) {
             future.setFailure(t);
@@ -174,6 +169,10 @@ class NioDatagramPipelineSink extends AbstractChannelSink {
 
         future.addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
 
+        // Clear the cached address so that the next getRemoteAddress() call
+        // updates the cache.
+        channel.remoteAddress = null;
+
         try {
             channel.getDatagramChannel().connect(remoteAddress);
             connected = true;
@@ -195,7 +194,7 @@ class NioDatagramPipelineSink extends AbstractChannelSink {
             fireExceptionCaught(channel, t);
         } finally {
             if (connected && !workerStarted) {
-                NioDatagramWorker.close(channel, future);
+                channel.worker.close(channel, future);
             }
         }
     }

@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.logging;
 
@@ -29,10 +22,10 @@ import org.jboss.netty.channel.ChannelDownstreamHandler;
 import org.jboss.netty.channel.ChannelEvent;
 import org.jboss.netty.channel.ChannelHandler;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
 import org.jboss.netty.channel.ChannelUpstreamHandler;
 import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.ChannelHandler.Sharable;
 import org.jboss.netty.logging.InternalLogLevel;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
@@ -43,11 +36,13 @@ import org.jboss.netty.logging.InternalLoggerFactory;
  * this class and override {@link #log(ChannelEvent)} to change the default
  * behavior.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1458 $, $Date: 2009-06-19 02:39:31 -0700 (Fri, 19 Jun 2009) $
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2121 $, $Date: 2010-02-02 01:38:07 +0100 (Tue, 02 Feb 2010) $
+ *
+ * @apiviz.landmark
  */
-@ChannelPipelineCoverage("all")
+@Sharable
 public class LoggingHandler implements ChannelUpstreamHandler, ChannelDownstreamHandler {
 
     private static final InternalLogLevel DEFAULT_LEVEL = InternalLogLevel.DEBUG;
@@ -68,12 +63,38 @@ public class LoggingHandler implements ChannelUpstreamHandler, ChannelDownstream
      * Creates a new instance whose logger name is the fully qualified class
      * name of the instance.
      *
+     * @param level   the log level
+     */
+    public LoggingHandler(InternalLogLevel level) {
+        this(level, true);
+    }
+
+    /**
+     * Creates a new instance whose logger name is the fully qualified class
+     * name of the instance.
+     *
      * @param hexDump {@code true} if and only if the hex dump of the received
      *                message is logged
      */
     public LoggingHandler(boolean hexDump) {
+        this(DEFAULT_LEVEL, hexDump);
+    }
+
+    /**
+     * Creates a new instance whose logger name is the fully qualified class
+     * name of the instance.
+     *
+     * @param level   the log level
+     * @param hexDump {@code true} if and only if the hex dump of the received
+     *                message is logged
+     */
+    public LoggingHandler(InternalLogLevel level, boolean hexDump) {
+        if (level == null) {
+            throw new NullPointerException("level");
+        }
+
         logger = InternalLoggerFactory.getInstance(getClass());
-        level = DEFAULT_LEVEL;
+        this.level = level;
         this.hexDump = hexDump;
     }
 
@@ -93,6 +114,15 @@ public class LoggingHandler implements ChannelUpstreamHandler, ChannelDownstream
      */
     public LoggingHandler(Class<?> clazz, boolean hexDump) {
         this(clazz, DEFAULT_LEVEL, hexDump);
+    }
+
+    /**
+     * Creates a new instance with the specified logger name.
+     *
+     * @param level   the log level
+     */
+    public LoggingHandler(Class<?> clazz, InternalLogLevel level) {
+        this(clazz, level, true);
     }
 
     /**

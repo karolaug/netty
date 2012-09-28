@@ -1,35 +1,31 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.nio;
 
 import static org.jboss.netty.channel.Channels.*;
 
 import java.io.IOException;
-import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketTimeoutException;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.ClosedSelectorException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -48,10 +44,10 @@ import org.jboss.netty.util.internal.IoWorkerRunnable;
 
 /**
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1338 $, $Date: 2009-06-10 01:56:37 -0700 (Wed, 10 Jun 2009) $
+ * @version $Rev: 2352 $, $Date: 2010-08-26 05:13:14 +0200 (Thu, 26 Aug 2010) $
  *
  */
 class NioServerSocketPipelineSink extends AbstractChannelSink {
@@ -120,17 +116,17 @@ class NioServerSocketPipelineSink extends AbstractChannelSink {
             switch (state) {
             case OPEN:
                 if (Boolean.FALSE.equals(value)) {
-                    NioWorker.close(channel, future);
+                    channel.worker.close(channel, future);
                 }
                 break;
             case BOUND:
             case CONNECTED:
                 if (value == null) {
-                    NioWorker.close(channel, future);
+                    channel.worker.close(channel, future);
                 }
                 break;
             case INTEREST_OPS:
-                NioWorker.setInterestOps(channel, future, ((Integer) value).intValue());
+                channel.worker.setInterestOps(channel, future, ((Integer) value).intValue());
                 break;
             }
         } else if (e instanceof MessageEvent) {
@@ -138,7 +134,7 @@ class NioServerSocketPipelineSink extends AbstractChannelSink {
             NioSocketChannel channel = (NioSocketChannel) event.getChannel();
             boolean offered = channel.writeBuffer.offer(event);
             assert offered;
-            NioWorker.write(channel, true);
+            channel.worker.writeFromUserCode(channel);
         }
     }
 
@@ -162,8 +158,7 @@ class NioServerSocketPipelineSink extends AbstractChannelSink {
                             new ThreadRenamingRunnable(
                                     new Boss(channel),
                                     "New I/O server boss #" + id +
-                                    " (channelId: " + channel.getId() +
-                                    ", " + channel.getLocalAddress() + ')')));
+                                    " (" + channel + ')')));
             bossStarted = true;
         } catch (Throwable t) {
             future.setFailure(t);
@@ -178,15 +173,30 @@ class NioServerSocketPipelineSink extends AbstractChannelSink {
     private void close(NioServerSocketChannel channel, ChannelFuture future) {
         boolean bound = channel.isBound();
         try {
-            channel.socket.close();
-            if (channel.setClosed()) {
-                future.setSuccess();
-                if (bound) {
-                    fireChannelUnbound(channel);
+            if (channel.socket.isOpen()) {
+                channel.socket.close();
+                Selector selector = channel.selector;
+                if (selector != null) {
+                    selector.wakeup();
                 }
-                fireChannelClosed(channel);
-            } else {
-                future.setSuccess();
+            }
+
+            // Make sure the boss thread is not running so that that the future
+            // is notified after a new connection cannot be accepted anymore.
+            // See NETTY-256 for more information.
+            channel.shutdownLock.lock();
+            try {
+                if (channel.setClosed()) {
+                    future.setSuccess();
+                    if (bound) {
+                        fireChannelUnbound(channel);
+                    }
+                    fireChannelClosed(channel);
+                } else {
+                    future.setSuccess();
+                }
+            } finally {
+                channel.shutdownLock.unlock();
             }
         } catch (Throwable t) {
             future.setFailure(t);
@@ -200,56 +210,96 @@ class NioServerSocketPipelineSink extends AbstractChannelSink {
     }
 
     private final class Boss implements Runnable {
+        private final Selector selector;
         private final NioServerSocketChannel channel;
 
-        Boss(NioServerSocketChannel channel) {
+        Boss(NioServerSocketChannel channel) throws IOException {
             this.channel = channel;
+
+            selector = Selector.open();
+
+            boolean registered = false;
+            try {
+                channel.socket.register(selector, SelectionKey.OP_ACCEPT);
+                registered = true;
+            } finally {
+                if (!registered) {
+                    closeSelector();
+                }
+            }
+
+            channel.selector = selector;
         }
 
         public void run() {
-            for (;;) {
-                try {
-                    // We do not call ServerSocketChannel.accept() directly
-                    // because SocketTimeoutException is not raised on some
-                    // JDKs.
-                    Socket acceptedSocket = channel.socket.socket().accept();
+            final Thread currentThread = Thread.currentThread();
 
+            channel.shutdownLock.lock();
+            try {
+                for (;;) {
                     try {
-                        ChannelPipeline pipeline =
-                            channel.getConfig().getPipelineFactory().getPipeline();
-                        NioWorker worker = nextWorker();
-                        worker.register(new NioAcceptedSocketChannel(
-                                        channel.getFactory(), pipeline, channel,
-                                        NioServerSocketPipelineSink.this,
-                                        acceptedSocket.getChannel(), worker), null);
-                    } catch (Exception e) {
+                        if (selector.select(1000) > 0) {
+                            selector.selectedKeys().clear();
+                        }
+
+                        SocketChannel acceptedSocket = channel.socket.accept();
+                        if (acceptedSocket != null) {
+                            registerAcceptedChannel(acceptedSocket, currentThread);
+                        }
+                    } catch (SocketTimeoutException e) {
+                        // Thrown every second to get ClosedChannelException
+                        // raised.
+                    } catch (CancelledKeyException e) {
+                        // Raised by accept() when the server socket was closed.
+                    } catch (ClosedSelectorException e) {
+                        // Raised by accept() when the server socket was closed.
+                    } catch (ClosedChannelException e) {
+                        // Closed as requested.
+                        break;
+                    } catch (Throwable e) {
                         logger.warn(
-                                "Failed to initialize an accepted socket.", e);
+                                "Failed to accept a connection.", e);
                         try {
-                            acceptedSocket.close();
-                        } catch (IOException e2) {
-                            logger.warn(
-                                    "Failed to close a partially accepted socket.",
-                                    e2);
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e1) {
+                            // Ignore
                         }
                     }
-                } catch (SocketTimeoutException e) {
-                    // Thrown every second to get ClosedChannelException
-                    // raised.
-                } catch (CancelledKeyException e) {
-                    // Raised by accept() when the server socket was closed.
-                } catch (ClosedChannelException e) {
-                    // Closed as requested.
-                    break;
-                } catch (IOException e) {
-                    logger.warn(
-                            "Failed to accept a connection.", e);
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e1) {
-                        // Ignore
-                    }
                 }
+            } finally {
+                channel.shutdownLock.unlock();
+                closeSelector();
+            }
+        }
+
+        private void registerAcceptedChannel(SocketChannel acceptedSocket, Thread currentThread) {
+            try {
+                ChannelPipeline pipeline =
+                    channel.getConfig().getPipelineFactory().getPipeline();
+                NioWorker worker = nextWorker();
+                worker.register(new NioAcceptedSocketChannel(
+                        channel.getFactory(), pipeline, channel,
+                        NioServerSocketPipelineSink.this, acceptedSocket,
+                        worker, currentThread), null);
+            } catch (Exception e) {
+                logger.warn(
+                        "Failed to initialize an accepted socket.", e);
+                try {
+                    acceptedSocket.close();
+                } catch (IOException e2) {
+                    logger.warn(
+                            "Failed to close a partially accepted socket.",
+                            e2);
+                }
+            }
+        }
+
+        private void closeSelector() {
+            channel.selector = null;
+            try {
+                selector.close();
+            } catch (Exception e) {
+                logger.warn("Failed to close a selector.", e);
             }
         }
     }

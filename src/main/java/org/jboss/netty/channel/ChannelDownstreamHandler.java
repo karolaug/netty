@@ -1,114 +1,53 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
-import java.net.SocketAddress;
-
-
 /**
  * Handles or intercepts a downstream {@link ChannelEvent}, and sends a
- * {@link ChannelEvent} to the previous or next handler in a
- * {@link ChannelPipeline}.
- *
- * <h3>Downstream events</h3>
- * <p>
- * A downstream event is an event which is supposed to be processed from the
- * last handler to the first handler in a {@link ChannelPipeline}.
- * For example, all I/O requests made by a user application are downstream
- * events.
+ * {@link ChannelEvent} to the next handler in a {@link ChannelPipeline}.
  * <p>
  * The most common use case of this interface is to intercept an I/O request
- * such as {@link Channel#write(Object)} and {@link Channel#close()}.  The
- * received {@link ChannelEvent} object is interpreted as described in the
- * following table:
+ * such as {@link Channel#write(Object)} and {@link Channel#close()}.
  *
- * <table border="1" cellspacing="0" cellpadding="6">
- * <tr>
- * <th>Event name</th><th>Event type and condition</th><th>Meaning</th>
- * </tr>
- * <tr>
- * <td>{@code "write"}</td>
- * <td>{@link MessageEvent}</td><td>Send a message to the {@link Channel}.</td>
- * </tr>
- * <tr>
- * <td>{@code "bind"}</td>
- * <td>{@link ChannelStateEvent}<br/>(state = {@link ChannelState#BOUND BOUND}, value = {@link SocketAddress})</td>
- * <td>Bind the {@link Channel} to the specified local address.</td>
- * </tr>
- * <tr>
- * <td>{@code "unbind"}</td>
- * <td>{@link ChannelStateEvent}<br/>(state = {@link ChannelState#BOUND BOUND}, value = {@code null})</td>
- * <td>Unbind the {@link Channel} from the current local address.</td>
- * </tr>
- * <tr>
- * <td>{@code "connect"}</td>
- * <td>{@link ChannelStateEvent}<br/>(state = {@link ChannelState#CONNECTED CONNECTED}, value = {@link SocketAddress})</td>
- * <td>Connect the {@link Channel} to the specified remote address.</td>
- * </tr>
- * <tr>
- * <td>{@code "disconnect"}</td>
- * <td>{@link ChannelStateEvent}<br/>(state = {@link ChannelState#CONNECTED CONNECTED}, value = {@code null})</td>
- * <td>Disconnect the {@link Channel} from the current remote address.</td>
- * </tr>
- * <tr>
- * <td>{@code "close"}</td>
- * <td>{@link ChannelStateEvent}<br/>(state = {@link ChannelState#OPEN OPEN}, value = {@code false})</td>
- * <td>Close the {@link Channel}.</td>
- * </tr>
- * </table>
+ * <h3>{@link SimpleChannelDownstreamHandler}</h3>
  * <p>
- * Other event types and conditions which were not addressed here will be
- * ignored and discarded.  Please note that there's no {@code "open"} in the
- * table.  It is because a {@link Channel} is always open when it is created
- * by a {@link ChannelFactory}.
+ * In most cases, you will get to use a {@link SimpleChannelDownstreamHandler}
+ * to implement a downstream handler because it provides an individual handler
+ * method for each event type.  You might want to implement this interface
+ * directly though if you want to handle various types of events in more
+ * generic way.
  *
- * <h4>Additional resources worth reading</h4>
- * <p>
- * You might want to refer to {@link ChannelUpstreamHandler} to see how a
- * {@link ChannelEvent} is interpreted when going upstream.  Also, please refer
- * to the {@link ChannelEvent} and {@link ChannelPipeline} documentation to find
- * out what an upstream event and a downstream event are, what fundamental
- * differences they have, and how they flow in a pipeline.
- *
- * <h3>Firing an event to the previous or next handler</h3>
+ * <h3>Firing an event to the next handler</h3>
  * <p>
  * You can forward the received event downstream or upstream.  In most cases,
- * {@link ChannelDownstreamHandler} will pass the event to the previous
- * handler (downstream) although it is legal to pass the event to the next
- * handler (upstream):
+ * {@link ChannelDownstreamHandler} will send the event downstream
+ * (i.e. outbound) although it is legal to send the event upstream (i.e. inbound):
  *
  * <pre>
- * // Sending the event forward (downstream)
+ * // Sending the event downstream (outbound)
  * void handleDownstream({@link ChannelHandlerContext} ctx, {@link ChannelEvent} e) throws Exception {
  *     ...
  *     ctx.sendDownstream(e);
  *     ...
  * }
  *
- * // Sending the event backward (upstream)
+ * // Sending the event upstream (inbound)
  * void handleDownstream({@link ChannelHandlerContext} ctx, {@link ChannelEvent} e) throws Exception {
  *     ...
- *     ctx.sendUpstream(new DefaultChannelStateEvent(...));
+ *     ctx.sendUpstream(new {@link UpstreamChannelStateEvent}(...));
  *     ...
  * }
  * </pre>
@@ -118,20 +57,21 @@ import java.net.SocketAddress;
  * You will also find various helper methods in {@link Channels} to be useful
  * to generate and send an artificial or manipulated event.
  *
+ * <h3>State management</h3>
+ *
+ * Please refer to {@link ChannelHandler}.
+ *
  * <h3>Thread safety</h3>
  * <p>
  * {@link #handleDownstream(ChannelHandlerContext, ChannelEvent) handleDownstream}
  * may be invoked by more than one thread simultaneously.  If the handler
  * accesses a shared resource or stores stateful information, you might need
  * proper synchronization in the handler implementation.
- * <p>
- * Also, please refer to the {@link ChannelPipelineCoverage} annotation to
- * understand the relationship between a handler and its stateful properties.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1403 $, $Date: 2009-06-17 01:33:54 -0700 (Wed, 17 Jun 2009) $
+ * @version $Rev: 2122 $, $Date: 2010-02-02 03:00:04 +0100 (Tue, 02 Feb 2010) $
  *
  * @apiviz.exclude ^org\.jboss\.netty\.handler\..*$
  */

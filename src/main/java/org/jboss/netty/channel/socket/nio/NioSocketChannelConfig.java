@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.nio;
 
@@ -26,9 +19,11 @@ import java.nio.ByteBuffer;
 import java.nio.channels.WritableByteChannel;
 
 import org.jboss.netty.channel.AdaptiveReceiveBufferSizePredictor;
+import org.jboss.netty.channel.AdaptiveReceiveBufferSizePredictorFactory;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelConfig;
 import org.jboss.netty.channel.ReceiveBufferSizePredictor;
+import org.jboss.netty.channel.ReceiveBufferSizePredictorFactory;
 import org.jboss.netty.channel.socket.SocketChannel;
 import org.jboss.netty.channel.socket.SocketChannelConfig;
 
@@ -53,14 +48,14 @@ import org.jboss.netty.channel.socket.SocketChannelConfig;
  * </tr><tr>
  * <td>{@code "receiveBufferSizePredictor"}</td><td>{@link #setReceiveBufferSizePredictor(ReceiveBufferSizePredictor)}</td>
  * </tr><tr>
- * <td>{@code "readWriteFair"}</td><td>{@link #setReadWriteFair(boolean)}</td>
+ * <td>{@code "receiveBufferSizePredictorFactory"}</td><td>{@link #setReceiveBufferSizePredictorFactory(ReceiveBufferSizePredictorFactory)}</td>
  * </tr>
  * </table>
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1448 $, $Date: 2009-06-19 01:08:08 -0700 (Fri, 19 Jun 2009) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  */
 public interface NioSocketChannelConfig extends SocketChannelConfig {
 
@@ -120,42 +115,34 @@ public interface NioSocketChannelConfig extends SocketChannelConfig {
     /**
      * Returns the {@link ReceiveBufferSizePredictor} which predicts the
      * number of readable bytes in the socket receive buffer.  The default
-     * predictor is {@link AdaptiveReceiveBufferSizePredictor}.
+     * predictor is <tt>{@link AdaptiveReceiveBufferSizePredictor}(64, 1024, 65536)</tt>.
      */
     ReceiveBufferSizePredictor getReceiveBufferSizePredictor();
 
     /**
      * Sets the {@link ReceiveBufferSizePredictor} which predicts the
      * number of readable bytes in the socket receive buffer.  The default
-     * predictor is {@link AdaptiveReceiveBufferSizePredictor}.
+     * predictor is <tt>{@link AdaptiveReceiveBufferSizePredictor}(64, 1024, 65536)</tt>.
      */
     void setReceiveBufferSizePredictor(ReceiveBufferSizePredictor predictor);
 
     /**
-     * @deprecated This property has been replaced by the
-     * {@code writeBufferHighWaterMark} and {@code writeBufferLowWaterMark}.
-     *
-     * Returns {@code true} if and only if an I/O thread should do its effort
-     * to balance the ratio of read and write operations.  Assuring
-     * the read-write fairness is sometimes necessary in a high speed network
-     * because a certain channel can spend too much time on flushing the
-     * large number of write requests not giving enough time for other channels
-     * to perform I/O.  The default value is {@code false}.
+     * Returns the {@link ReceiveBufferSizePredictorFactory} which creates a new
+     * {@link ReceiveBufferSizePredictor} when a new channel is created and
+     * no {@link ReceiveBufferSizePredictor} was set.  If no predictor was set
+     * for the channel, {@link #setReceiveBufferSizePredictor(ReceiveBufferSizePredictor)}
+     * will be called with the new predictor.  The default factory is
+     * <tt>{@link AdaptiveReceiveBufferSizePredictorFactory}(64, 1024, 65536)</tt>.
      */
-    @Deprecated
-    boolean isReadWriteFair();
+    ReceiveBufferSizePredictorFactory getReceiveBufferSizePredictorFactory();
 
     /**
-     * @deprecated This property has been replaced by the
-     * {@code writeBufferHighWaterMark} and {@code writeBufferLowWaterMark}.
-     *
-     * Sets if an I/O thread should balance the ratio of read and write
-     * operations.  Assuring the read-write fairness is sometimes necessary
-     * in a high speed network because a certain channel can spend too much
-     * time on flushing the large number of write requests not giving enough
-     * time for other channels to perform I/O.  The default value is
-     * {@code false}.
+     * Sets the {@link ReceiveBufferSizePredictor} which creates a new
+     * {@link ReceiveBufferSizePredictor} when a new channel is created and
+     * no {@link ReceiveBufferSizePredictor} was set.  If no predictor was set
+     * for the channel, {@link #setReceiveBufferSizePredictor(ReceiveBufferSizePredictor)}
+     * will be called with the new predictor.  The default factory is
+     * <tt>{@link AdaptiveReceiveBufferSizePredictorFactory}(64, 1024, 65536)</tt>.
      */
-    @Deprecated
-    void setReadWriteFair(boolean fair);
+    void setReceiveBufferSizePredictorFactory(ReceiveBufferSizePredictorFactory predictorFactory);
 }

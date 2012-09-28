@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.util;
 
@@ -35,11 +28,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.jboss.netty.channel.ChannelPipelineFactory;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
 import org.jboss.netty.util.internal.ConcurrentIdentityHashMap;
-import org.jboss.netty.util.internal.MapBackedSet;
 import org.jboss.netty.util.internal.ReusableIterator;
+import org.jboss.netty.util.internal.SharedResourceMisuseDetector;
 
 /**
  * A {@link Timer} optimized for approximated I/O timeout scheduling.
@@ -65,19 +59,28 @@ import org.jboss.netty.util.internal.ReusableIterator;
  * (i.e. the size of the wheel) is 512.  You could specify a larger value
  * if you are going to schedule a lot of timeouts.
  *
+ * <h3>Do not create many instances.</h3>
+ *
+ * {@link HashedWheelTimer} creates a new thread whenever it is instantiated and
+ * started.  Therefore, you should make sure to create only one instance and
+ * share it across your application.  One of the common mistakes, that makes
+ * your application unresponsive, is to create a new instance in
+ * {@link ChannelPipelineFactory}, which results in the creation of a new thread
+ * for every connection.
+ *
  * <h3>Implementation Details</h3>
  *
  * {@link HashedWheelTimer} is based on
- * <a href="http://cseweb.ucsd.edu/users/varghese/>George Varghese</a> and
+ * <a href="http://cseweb.ucsd.edu/users/varghese/">George Varghese</a> and
  * Tony Lauck's paper,
- * <a href="http://www-cse.ucsd.edu/users/varghese/PAPERS/twheel.ps.Z">'Hashed
+ * <a href="http://cseweb.ucsd.edu/users/varghese/PAPERS/twheel.ps.Z">'Hashed
  * and Hierarchical Timing Wheels: data structures to efficiently implement a
  * timer facility'</a>.  More comprehensive slides are located
  * <a href="http://www.cse.wustl.edu/~cdgill/courses/cs6874/TimingWheels.ppt">here</a>.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1397 $, $Date: 2009-06-16 23:37:36 -0700 (Tue, 16 Jun 2009) $
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2297 $, $Date: 2010-06-07 03:50:02 +0200 (Mon, 07 Jun 2010) $
  */
 public class HashedWheelTimer implements Timer {
 
@@ -85,10 +88,8 @@ public class HashedWheelTimer implements Timer {
         InternalLoggerFactory.getInstance(HashedWheelTimer.class);
     private static final AtomicInteger id = new AtomicInteger();
 
-    // I'd say 64 active timer threads are obvious misuse.
-    private static final int MISUSE_WARNING_THRESHOLD = 64;
-    private static final AtomicInteger activeInstances = new AtomicInteger();
-    private static final AtomicBoolean loggedMisuseWarning = new AtomicBoolean();
+    private static final SharedResourceMisuseDetector misuseDetector =
+        new SharedResourceMisuseDetector(HashedWheelTimer.class);
 
     private final Worker worker = new Worker();
     final Thread workerThread;
@@ -212,15 +213,7 @@ public class HashedWheelTimer implements Timer {
                         worker, "Hashed wheel timer #" + id.incrementAndGet()));
 
         // Misuse check
-        int activeInstances = HashedWheelTimer.activeInstances.incrementAndGet();
-        if (activeInstances >= MISUSE_WARNING_THRESHOLD &&
-            loggedMisuseWarning.compareAndSet(false, true)) {
-            logger.debug(
-                    "There are too many active " +
-                    HashedWheelTimer.class.getSimpleName() + " instances (" +
-                    activeInstances + ") - you should share the small number " +
-                    "of instances to avoid excessive resource consumption.");
-        }
+        misuseDetector.increase();
     }
 
     @SuppressWarnings("unchecked")
@@ -282,16 +275,21 @@ public class HashedWheelTimer implements Timer {
             return Collections.emptySet();
         }
 
+        boolean interrupted = false;
         while (workerThread.isAlive()) {
             workerThread.interrupt();
             try {
                 workerThread.join(100);
             } catch (InterruptedException e) {
-                // Ignore
+                interrupted = true;
             }
         }
 
-        activeInstances.decrementAndGet();
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+
+        misuseDetector.decrease();
 
         Set<Timeout> unprocessedTimeouts = new HashSet<Timeout>();
         for (Set<HashedWheelTimeout> bucket: wheel) {

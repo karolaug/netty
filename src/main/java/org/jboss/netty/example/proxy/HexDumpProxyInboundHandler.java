@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.example.proxy;
 
@@ -31,7 +24,6 @@ import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
 import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
@@ -39,16 +31,20 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
 
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1360 $, $Date: 2009-06-12 01:42:44 -0700 (Fri, 12 Jun 2009) $
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2376 $, $Date: 2010-10-24 20:24:20 +0200 (Sun, 24 Oct 2010) $
  */
-@ChannelPipelineCoverage("one")
 public class HexDumpProxyInboundHandler extends SimpleChannelUpstreamHandler {
 
     private final ClientSocketChannelFactory cf;
     private final String remoteHost;
     private final int remotePort;
+
+    // This lock guards against the race condition that overrides the
+    // OP_READ flag incorrectly.
+    // See the related discussion: http://markmail.org/message/x7jc6mqx6ripynqf
+    final Object trafficLock = new Object();
 
     private volatile Channel outboundChannel;
 
@@ -87,18 +83,37 @@ public class HexDumpProxyInboundHandler extends SimpleChannelUpstreamHandler {
     }
 
     @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e)
+    public void messageReceived(ChannelHandlerContext ctx, final MessageEvent e)
             throws Exception {
         ChannelBuffer msg = (ChannelBuffer) e.getMessage();
-        System.out.println(">>> " + ChannelBuffers.hexDump(msg));
-        outboundChannel.write(msg);
+        //System.out.println(">>> " + ChannelBuffers.hexDump(msg));
+        synchronized (trafficLock) {
+            outboundChannel.write(msg);
+            // If outboundChannel is saturated, do not read until notified in
+            // OutboundHandler.channelInterestChanged().
+            if (!outboundChannel.isWritable()) {
+                e.getChannel().setReadable(false);
+            }
+        }
+    }
+
+    @Override
+    public void channelInterestChanged(ChannelHandlerContext ctx,
+            ChannelStateEvent e) throws Exception {
+        // If inboundChannel is not saturated anymore, continue accepting
+        // the incoming traffic from the outboundChannel.
+        synchronized (trafficLock) {
+            if (e.getChannel().isWritable()) {
+                outboundChannel.setReadable(true);
+            }
+        }
     }
 
     @Override
     public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
             throws Exception {
         if (outboundChannel != null) {
-            outboundChannel.close();
+            closeOnFlush(outboundChannel);
         }
     }
 
@@ -106,10 +121,9 @@ public class HexDumpProxyInboundHandler extends SimpleChannelUpstreamHandler {
     public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e)
             throws Exception {
         e.getCause().printStackTrace();
-        e.getChannel().close();
+        closeOnFlush(e.getChannel());
     }
 
-    @ChannelPipelineCoverage("one")
     private class OutboundHandler extends SimpleChannelUpstreamHandler {
 
         private final Channel inboundChannel;
@@ -119,24 +133,52 @@ public class HexDumpProxyInboundHandler extends SimpleChannelUpstreamHandler {
         }
 
         @Override
-        public void messageReceived(ChannelHandlerContext ctx, MessageEvent e)
+        public void messageReceived(ChannelHandlerContext ctx, final MessageEvent e)
                 throws Exception {
             ChannelBuffer msg = (ChannelBuffer) e.getMessage();
-            System.out.println("<<< " + ChannelBuffers.hexDump(msg));
-            inboundChannel.write(msg);
+            //System.out.println("<<< " + ChannelBuffers.hexDump(msg));
+            synchronized (trafficLock) {
+                inboundChannel.write(msg);
+                // If inboundChannel is saturated, do not read until notified in
+                // HexDumpProxyInboundHandler.channelInterestChanged().
+                if (!inboundChannel.isWritable()) {
+                    e.getChannel().setReadable(false);
+                }
+            }
+        }
+
+        @Override
+        public void channelInterestChanged(ChannelHandlerContext ctx,
+                ChannelStateEvent e) throws Exception {
+            // If outboundChannel is not saturated anymore, continue accepting
+            // the incoming traffic from the inboundChannel.
+            synchronized (trafficLock) {
+                if (e.getChannel().isWritable()) {
+                    inboundChannel.setReadable(true);
+                }
+            }
         }
 
         @Override
         public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
                 throws Exception {
-            inboundChannel.close();
+            closeOnFlush(inboundChannel);
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e)
                 throws Exception {
             e.getCause().printStackTrace();
-            e.getChannel().close();
+            closeOnFlush(e.getChannel());
+        }
+    }
+
+    /**
+     * Closes the specified channel after all queued write requests are flushed.
+     */
+    static void closeOnFlush(Channel ch) {
+        if (ch.isConnected()) {
+            ch.write(ChannelBuffers.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
         }
     }
 }

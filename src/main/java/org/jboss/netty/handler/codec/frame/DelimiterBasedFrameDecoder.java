@@ -1,30 +1,24 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.frame;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.Channels;
 
 /**
  * A decoder that splits the received {@link ChannelBuffer}s by one or more
@@ -61,21 +55,20 @@ import org.jboss.netty.channel.ChannelHandlerContext;
  * +----------+
  * </pre>
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
  * @version $Rev:231 $, $Date:2008-06-12 16:44:50 +0900 (목, 12 6월 2008) $
  *
- * @apiviz.landmark
- * @apiviz.uses org.jboss.netty.handler.codec.frame.Delimiters - - optional yet useful
+ * @apiviz.uses org.jboss.netty.handler.codec.frame.Delimiters - - useful
  */
 public class DelimiterBasedFrameDecoder extends FrameDecoder {
 
     private final ChannelBuffer[] delimiters;
     private final int maxFrameLength;
     private final boolean stripDelimiter;
-    private volatile boolean discardingTooLongFrame;
-    private volatile long tooLongFrameLength;
+    private boolean discardingTooLongFrame;
+    private int tooLongFrameLength;
 
     /**
      * Creates a new instance.
@@ -172,18 +165,23 @@ public class DelimiterBasedFrameDecoder extends FrameDecoder {
 
             if (discardingTooLongFrame) {
                 // We've just finished discarding a very large frame.
-                // Throw an exception and go back to the initial state.
-                long tooLongFrameLength = this.tooLongFrameLength;
-                this.tooLongFrameLength = 0L;
+                // Go back to the initial state.
                 discardingTooLongFrame = false;
                 buffer.skipBytes(minFrameLength + minDelimLength);
-                fail(tooLongFrameLength + minFrameLength + minDelimLength);
+
+                // TODO Let user choose when the exception should be raised - early or late?
+                //      If early, fail() should be called when discardingTooLongFrame is set to true.
+                int tooLongFrameLength = this.tooLongFrameLength;
+                this.tooLongFrameLength = 0;
+                fail(ctx, tooLongFrameLength);
+                return null;
             }
 
             if (minFrameLength > maxFrameLength) {
                 // Discard read frame.
                 buffer.skipBytes(minFrameLength + minDelimLength);
-                fail(minFrameLength);
+                fail(ctx, minFrameLength);
+                return null;
             }
 
             if (stripDelimiter) {
@@ -195,20 +193,36 @@ public class DelimiterBasedFrameDecoder extends FrameDecoder {
 
             return frame;
         } else {
-            if (buffer.readableBytes() > maxFrameLength) {
-                // Discard the content of the buffer until a delimiter is found.
-                tooLongFrameLength = buffer.readableBytes();
+            if (!discardingTooLongFrame) {
+                if (buffer.readableBytes() > maxFrameLength) {
+                    // Discard the content of the buffer until a delimiter is found.
+                    tooLongFrameLength = buffer.readableBytes();
+                    buffer.skipBytes(buffer.readableBytes());
+                    discardingTooLongFrame = true;
+                }
+            } else {
+                // Still discarding the buffer since a delimiter is not found.
+                tooLongFrameLength += buffer.readableBytes();
                 buffer.skipBytes(buffer.readableBytes());
-                discardingTooLongFrame = true;
             }
-
             return null;
         }
     }
 
-    private void fail(long frameLength) throws TooLongFrameException {
-        throw new TooLongFrameException(
-                "The frame length exceeds " + maxFrameLength + ": " + frameLength);
+    private void fail(ChannelHandlerContext ctx, long frameLength) {
+        if (frameLength > 0) {
+            Channels.fireExceptionCaught(
+                    ctx.getChannel(),
+                    new TooLongFrameException(
+                            "frame length exceeds " + maxFrameLength +
+                            ": " + frameLength + " - discarded"));
+        } else {
+            Channels.fireExceptionCaught(
+                    ctx.getChannel(),
+                    new TooLongFrameException(
+                            "frame length exceeds " + maxFrameLength +
+                            " - discarding"));
+        }
     }
 
     /**

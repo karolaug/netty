@@ -1,63 +1,57 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.http;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URLDecoder;
+import java.nio.charset.Charset;
 import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Splits an HTTP query string into a path string and key-value parameter pairs.
  * This decoder is for one time use only.  Create a new instance for each URI:
  * <pre>
- * QueryStringDecoder decoder = new QueryStringDecoder("/hello?recipient=world");
+ * {@link QueryStringDecoder} decoder = new {@link QueryStringDecoder}("/hello?recipient=world");
  * assert decoder.getPath().equals("/hello");
  * assert decoder.getParameters().get("recipient").equals("world");
  * </pre>
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @author <a href="http://tsunanet.net/">Benoit Sigoure</a>
+ * @version $Rev: 2302 $, $Date: 2010-06-14 13:07:44 +0200 (Mon, 14 Jun 2010) $
+ *
+ * @see QueryStringEncoder
  *
  * @apiviz.stereotype utility
- * @see QueryStringEncoder
+ * @apiviz.has        org.jboss.netty.handler.codec.http.HttpRequest oneway - - decodes
  */
 public class QueryStringDecoder {
 
-    private static final Pattern PARAM_PATTERN = Pattern.compile("([^=]*)=([^&]*)&*");
-
-    private final String charset;
+    private final Charset charset;
     private final String uri;
     private String path;
-    private final Map<String, List<String>> params = new HashMap<String, List<String>>();
+    private Map<String, List<String>> params;
 
     /**
      * Creates a new decoder that decodes the specified URI. The decoder will
@@ -71,7 +65,7 @@ public class QueryStringDecoder {
      * Creates a new decoder that decodes the specified URI encoded in the
      * specified charset.
      */
-    public QueryStringDecoder(String uri, String charset) {
+    public QueryStringDecoder(String uri, Charset charset) {
         if (uri == null) {
             throw new NullPointerException("uri");
         }
@@ -81,6 +75,14 @@ public class QueryStringDecoder {
 
         this.uri = uri;
         this.charset = charset;
+    }
+
+    /**
+     * @deprecated Use {@link #QueryStringDecoder(String, Charset)} instead.
+     */
+    @Deprecated
+    public QueryStringDecoder(String uri, String charset) {
+        this(uri, Charset.forName(charset));
     }
 
     /**
@@ -95,7 +97,7 @@ public class QueryStringDecoder {
      * Creates a new decoder that decodes the specified URI encoded in the
      * specified charset.
      */
-    public QueryStringDecoder(URI uri, String charset){
+    public QueryStringDecoder(URI uri, Charset charset){
         if (uri == null) {
             throw new NullPointerException("uri");
         }
@@ -108,16 +110,24 @@ public class QueryStringDecoder {
     }
 
     /**
+     * @deprecated Use {@link #QueryStringDecoder(URI, Charset)} instead.
+     */
+    @Deprecated
+    public QueryStringDecoder(URI uri, String charset){
+        this(uri, Charset.forName(charset));
+    }
+
+    /**
      * Returns the decoded path string of the URI.
      */
     public String getPath() {
-        //decode lazily
-        if(path == null) {
-            if(uri.contains("?")) {
-                decode();
+        if (path == null) {
+            int pathEndPos = uri.indexOf('?');
+            if (pathEndPos < 0) {
+                path = uri;
             }
             else {
-                path = uri;
+                return path = uri.substring(0, pathEndPos);
             }
         }
         return path;
@@ -127,53 +137,74 @@ public class QueryStringDecoder {
      * Returns the decoded key-value parameter pairs of the URI.
      */
     public Map<String, List<String>> getParameters() {
-        if(path == null){
-            if(uri.contains("?")) {
-                decode();
+        if (params == null) {
+            int pathLength = getPath().length();
+            if (uri.length() == pathLength) {
+                return Collections.emptyMap();
             }
-            else {
-                path = uri;
-            }
+            params = decodeParams(uri.substring(pathLength + 1));
         }
         return params;
     }
 
-    private void decode() {
-        int pathEndPos = uri.indexOf('?');
-        if (pathEndPos < 0) {
-            path = uri;
-        } else {
-            path = uri.substring(0, pathEndPos);
-            decodeParams(uri.substring(pathEndPos + 1));
-        }
-    }
-
-    private void decodeParams(String s) {
-        Matcher m = PARAM_PATTERN.matcher(s);
-        int pos = 0;
-        while (m.find(pos)) {
-            pos = m.end();
-            String key = decodeComponent(m.group(1), charset);
-            String value = decodeComponent(m.group(2), charset);
-
-            List<String> values = params.get(key);
-            if(values == null) {
-                values = new ArrayList<String>();
-                params.put(key,values);
+    private Map<String, List<String>> decodeParams(String s) {
+        Map<String, List<String>> params = new LinkedHashMap<String, List<String>>();
+        String name = null;
+        int pos = 0; // Beginning of the unprocessed region
+        int i;       // End of the unprocessed region
+        char c = 0;  // Current character
+        for (i = 0; i < s.length(); i++) {
+            c = s.charAt(i);
+            if (c == '=' && name == null) {
+                if (pos != i) {
+                    name = decodeComponent(s.substring(pos, i), charset);
+                }
+                pos = i + 1;
+            } else if (c == '&') {
+                if (name == null && pos != i) {
+                    // We haven't seen an `=' so far but moved forward.
+                    // Must be a param of the form '&a&' so add it with
+                    // an empty value.
+                    addParam(params, decodeComponent(s.substring(pos, i), charset), "");
+                } else if (name != null) {
+                    addParam(params, name, decodeComponent(s.substring(pos, i), charset));
+                    name = null;
+                }
+                pos = i + 1;
             }
-            values.add(value);
         }
+
+        if (pos != i) {  // Are there characters we haven't dealt with?
+            if (name == null) {     // Yes and we haven't seen any `='.
+                addParam(params, decodeComponent(s.substring(pos, i), charset), "");
+            } else {                // Yes and this must be the last value.
+                addParam(params, name, decodeComponent(s.substring(pos, i), charset));
+            }
+        } else if (name != null) {  // Have we seen a name without value?
+            addParam(params, name, "");
+        }
+
+        return params;
     }
 
-    private static String decodeComponent(String s, String charset) {
+    private static String decodeComponent(String s, Charset charset) {
         if (s == null) {
             return "";
         }
 
         try {
-            return URLDecoder.decode(s, charset);
+            return URLDecoder.decode(s, charset.name());
         } catch (UnsupportedEncodingException e) {
-            throw new UnsupportedCharsetException(charset);
+            throw new UnsupportedCharsetException(charset.name());
         }
+    }
+
+    private static void addParam(Map<String, List<String>> params, String name, String value) {
+        List<String> values = params.get(name);
+        if (values == null) {
+            values = new ArrayList<String>(1);  // Often there's only 1 value.
+            params.put(name, values);
+        }
+        values.add(value);
     }
 }

@@ -1,27 +1,22 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -40,72 +35,89 @@ import org.jboss.netty.handler.ssl.SslHandler;
  * and how the {@link ChannelHandler}s in the pipeline interact with each other.
  *
  * <h3>Creation of a pipeline</h3>
+ *
+ * For each new channel, a new pipeline must be created and attached to the
+ * channel.  Once attached, the coupling between the channel and the pipeline
+ * is permanent; the channel cannot attach another pipeline to it nor detach
+ * the current pipeline from it.
  * <p>
- * It is recommended to create a new pipeline using the helper methods in
+ * The recommended way to create a new pipeline is to use the helper methods in
  * {@link Channels} rather than calling an individual implementation's
  * constructor:
  * <pre>
- * import static org.jboss.netty.channel.Channels.*;
- * ChannelPipeline pipeline = pipeline(); // same with Channels.pipeline()
+ * import static org.jboss.netty.channel.{@link Channels}.*;
+ * {@link ChannelPipeline} pipeline = pipeline(); // same with Channels.pipeline()
  * </pre>
  *
  * <h3>How an event flows in a pipeline</h3>
- * <p>
+ *
  * The following diagram describes how {@link ChannelEvent}s are processed by
  * {@link ChannelHandler}s in a {@link ChannelPipeline} typically.
  * A {@link ChannelEvent} can be handled by either a {@link ChannelUpstreamHandler}
- * or a {@link ChannelDownstreamHandler} and be forwarded to the next or
- * previous handler by calling {@link ChannelHandlerContext#sendUpstream(ChannelEvent)}
+ * or a {@link ChannelDownstreamHandler} and be forwarded to the closest
+ * handler by calling {@link ChannelHandlerContext#sendUpstream(ChannelEvent)}
  * or {@link ChannelHandlerContext#sendDownstream(ChannelEvent)}.  The meaning
  * of the event is interpreted somewhat differently depending on whether it is
  * going upstream or going downstream. Please refer to {@link ChannelEvent} for
  * more information.
- *
  * <pre>
- *
- *                                            I/O Request
- *                                          via {@link Channel} or
- *                                      {@link ChannelHandlerContext}
- *                                                |
- *  +---------------------------------------------+--------------------+
- *  |                       ChannelPipeline       |                    |
- *  |                                            \|/                   |
- *  |       +----------------------+  +-----------+------------+       |
- *  |  LAST | Upstream Handler  N  |  | Downstream Handler  M  | LAST  |
- *  |   .   +----------+-----------+  +-----------+------------+   .   |
- *  |   .             /|\                         |                .   |
- *  |   .              |                         \|/               .   |
- *  |   .   +----------+-----------+  +-----------+------------+   .   |
- *  |   .   | Upstream Handler N-1 |  | Downstream Handler M-1 |   .   |
- *  |   .   +----------+-----------+  +-----------+------------+   .   |
- *  |   .             /|\                         .                .   |
- *  |   .              .                          .                .   |
- *  |   .      [ Going UPSTREAM ]        [ Going DOWNSTREAM ]      .   |
- *  |   .              .                          .                .   |
- *  |   .              .                         \|/               .   |
- *  |   .   +----------+-----------+  +-----------+------------+   .   |
- *  |   .   | Upstream Handler  2  |  | Downstream Handler  2  |   .   |
- *  |   .   +----------+-----------+  +-----------+------------+   .   |
- *  |   .             /|\                         |                .   |
- *  |   .              |                         \|/               .   |
- *  |   .   +----------+-----------+  +-----------+------------+   .   |
- *  | FIRST | Upstream Handler  1  |  | Downstream Handler  1  | FIRST |
- *  |       +----------+-----------+  +-----------+------------+       |
- *  |                 /|\                         |                    |
- *  +------------------+--------------------------+--------------------+
- *                     |                         \|/
- *  +------------------+--------------------------+--------------------+
- *  |             I/O Threads (Transport Implementation)               |
- *  +------------------------------------------------------------------+
+ *                                       I/O Request
+ *                                     via {@link Channel} or
+ *                                 {@link ChannelHandlerContext}
+ *                                           |
+ *  +----------------------------------------+---------------+
+ *  |                  ChannelPipeline       |               |
+ *  |                                       \|/              |
+ *  |  +----------------------+  +-----------+------------+  |
+ *  |  | Upstream Handler  N  |  | Downstream Handler  1  |  |
+ *  |  +----------+-----------+  +-----------+------------+  |
+ *  |            /|\                         |               |
+ *  |             |                         \|/              |
+ *  |  +----------+-----------+  +-----------+------------+  |
+ *  |  | Upstream Handler N-1 |  | Downstream Handler  2  |  |
+ *  |  +----------+-----------+  +-----------+------------+  |
+ *  |            /|\                         .               |
+ *  |             .                          .               |
+ *  |     [ sendUpstream() ]        [ sendDownstream() ]     |
+ *  |     [ + INBOUND data ]        [ + OUTBOUND data  ]     |
+ *  |             .                          .               |
+ *  |             .                         \|/              |
+ *  |  +----------+-----------+  +-----------+------------+  |
+ *  |  | Upstream Handler  2  |  | Downstream Handler M-1 |  |
+ *  |  +----------+-----------+  +-----------+------------+  |
+ *  |            /|\                         |               |
+ *  |             |                         \|/              |
+ *  |  +----------+-----------+  +-----------+------------+  |
+ *  |  | Upstream Handler  1  |  | Downstream Handler  M  |  |
+ *  |  +----------+-----------+  +-----------+------------+  |
+ *  |            /|\                         |               |
+ *  +-------------+--------------------------+---------------+
+ *                |                         \|/
+ *  +-------------+--------------------------+---------------+
+ *  |             |                          |               |
+ *  |     [ Socket.read() ]          [ Socket.write() ]      |
+ *  |                                                        |
+ *  |  Netty Internal I/O Threads (Transport Implementation) |
+ *  +--------------------------------------------------------+
  * </pre>
- * Please note that an upstream event flows from the first upstream handler
- * to the last upstream handler (i.e. to the next) and a downstream event
- * flows from the last downstream handler to the first downstream handler
- * (i.e. to the previous).
+ * An upstream event is handled by the upstream handlers in the bottom-up
+ * direction as shown on the left side of the diagram.  An upstream handler
+ * usually handles the inbound data generated by the I/O thread on the bottom
+ * of the diagram.  The inbound data is often read from a remote peer via the
+ * actual input operation such as {@link InputStream#read(byte[])}.
+ * If an upstream event goes beyond the top upstream handler, it is discarded
+ * silently.
+ * <p>
+ * A downstream event is handled by the downstream handler in the top-down
+ * direction as shown on the right side of the diagram.  A downstream handler
+ * usually generates or transforms the outbound traffic such as write requests.
+ * If a downstream event goes beyond the bottom downstream handler, it is
+ * handled by an I/O thread associated with the {@link Channel}. The I/O thread
+ * often performs the actual output operation such as {@link OutputStream#write(byte[])}.
  * <p>
  * For example, let us assume that we created the following pipeline:
  * <pre>
- * ChannelPipeline p = Channels.pipeline();
+ * {@link ChannelPipeline} p = {@link Channels}.pipeline();
  * p.addLast("1", new UpstreamHandlerA());
  * p.addLast("2", new UpstreamHandlerB());
  * p.addLast("3", new DownstreamHandlerA());
@@ -152,7 +164,7 @@ import org.jboss.netty.handler.ssl.SslHandler;
  * and it could be represented as shown in the following example:
  *
  * <pre>
- * ChannelPipeline pipeline = {@link Channels#pipeline() Channels.pipeline()};
+ * {@link ChannelPipeline} pipeline = {@link Channels#pipeline() Channels.pipeline()};
  * pipeline.addLast("decoder", new MyProtocolDecoder());
  * pipeline.addLast("encoder", new MyProtocolEncoder());
  * pipeline.addLast("executor", new {@link ExecutionHandler}(new {@link OrderedMemoryAwareThreadPoolExecutor}(16, 1048576, 1048576)));
@@ -166,10 +178,32 @@ import org.jboss.netty.handler.ssl.SslHandler;
  * {@link SslHandler} when sensitive information is about to be exchanged,
  * and remove it after the exchange.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * <h3>Pitfall</h3>
+ * <p>
+ * Due to the internal implementation detail of the current default
+ * {@link ChannelPipeline}, the following code does not work as expected if
+ * <tt>FirstHandler</tt> is the last handler in the pipeline:
+ * <pre>
+ * public class FirstHandler extends {@link SimpleChannelUpstreamHandler} {
  *
- * @version $Rev: 1260 $, $Date: 2009-04-28 05:36:06 -0700 (Tue, 28 Apr 2009) $
+ *     {@code @Override}
+ *     public void messageReceived({@link ChannelHandlerContext} ctx, {@link MessageEvent} e) {
+ *         // Remove this handler from the pipeline,
+ *         ctx.getPipeline().remove(this);
+ *         // And let SecondHandler handle the current event.
+ *         ctx.getPipeline().addLast("2nd", new SecondHandler());
+ *         ctx.sendUpstream(e);
+ *     }
+ * }
+ * </pre>
+ * To implement the expected behavior, you have to add <tt>SecondHandler</tt>
+ * before the removal or make sure there is at least one more handler between
+ * <tt>FirstHandler</tt> and <tt>SecondHandler</tt>.
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ *
+ * @version $Rev: 2153 $, $Date: 2010-02-17 09:24:25 +0100 (Wed, 17 Feb 2010) $
  *
  * @apiviz.landmark
  * @apiviz.composedOf org.jboss.netty.channel.ChannelHandlerContext

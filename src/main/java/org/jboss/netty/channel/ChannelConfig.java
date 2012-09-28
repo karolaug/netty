@@ -1,28 +1,20 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel;
 
-import java.io.IOException;
 import java.nio.ByteOrder;
 import java.util.Map;
 
@@ -31,7 +23,6 @@ import org.jboss.netty.buffer.ChannelBufferFactory;
 import org.jboss.netty.buffer.HeapChannelBufferFactory;
 import org.jboss.netty.channel.socket.SocketChannelConfig;
 import org.jboss.netty.channel.socket.nio.NioSocketChannelConfig;
-import org.jboss.netty.handler.timeout.WriteTimeoutHandler;
 
 /**
  * A set of configuration properties of a {@link Channel}.
@@ -40,8 +31,8 @@ import org.jboss.netty.handler.timeout.WriteTimeoutHandler;
  * {@link SocketChannelConfig} or use {@link #setOptions(Map)} to set the
  * transport-specific properties:
  * <pre>
- * Channel ch = ...;
- * SocketChannelConfig cfg = <strong>(SocketChannelConfig) ch.getConfig();</strong>
+ * {@link Channel} ch = ...;
+ * {@link SocketChannelConfig} cfg = <strong>({@link SocketChannelConfig}) ch.getConfig();</strong>
  * cfg.setTcpNoDelay(false);
  * </pre>
  *
@@ -69,10 +60,10 @@ import org.jboss.netty.handler.timeout.WriteTimeoutHandler;
  * example, you can configure the parameters which are specific to a TCP/IP
  * socket as explained in {@link SocketChannelConfig} or {@link NioSocketChannelConfig}.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1478 $, $Date: 2009-06-19 10:01:09 -0700 (Fri, 19 Jun 2009) $
+ * @version $Rev: 2122 $, $Date: 2010-02-02 03:00:04 +0100 (Tue, 02 Feb 2010) $
  *
  * @apiviz.has org.jboss.netty.channel.ChannelPipelineFactory
  * @apiviz.composedOf org.jboss.netty.channel.ReceiveBufferSizePredictor
@@ -158,33 +149,4 @@ public interface ChannelConfig {
      *                             {@code 0} to disable.
      */
     void setConnectTimeoutMillis(int connectTimeoutMillis);
-
-    /**
-     * @deprecated Use {@link WriteTimeoutHandler} instead.
-     *
-     * Returns the write timeout of the channel in milliseconds.  If a write
-     * operation is not completed within the write timeout, an
-     * {@link IOException} will be raised.  If the {@link Channel} does not
-     * support write operation, this property is not used at all, and therefore
-     * will be ignored.
-     *
-     * @return the write timeout in milliseconds.  {@code 0} if disabled.
-     */
-    @Deprecated
-    int getWriteTimeoutMillis();
-
-    /**
-     * @deprecated Use {@link WriteTimeoutHandler} instead.
-     *
-     * Sets the write timeout of the channel in milliseconds.  If a write
-     * operation is not completed within the write timeout, an
-     * {@link IOException} will be raised.  If the {@link Channel} does not
-     * support write operation, this property is not used at all, and therefore
-     * will be ignored.
-     *
-     * @param writeTimeoutMillis the write timeout in milliseconds.
-     *                           {@code 0} to disable.
-     */
-    @Deprecated
-    void setWriteTimeoutMillis(int writeTimeoutMillis);
 }

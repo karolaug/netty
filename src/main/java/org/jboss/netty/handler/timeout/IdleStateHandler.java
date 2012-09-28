@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.timeout;
 
@@ -26,10 +19,13 @@ import static org.jboss.netty.channel.Channels.*;
 
 import java.util.concurrent.TimeUnit;
 
+import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
+import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.ChannelPipelineFactory;
 import org.jboss.netty.channel.ChannelStateEvent;
+import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.LifeCycleAwareChannelHandler;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
@@ -69,15 +65,61 @@ import org.jboss.netty.util.TimerTask;
  * </tr>
  * </table>
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1477 $, $Date: 2009-06-19 09:45:30 -0700 (Fri, 19 Jun 2009) $
+ * <pre>
+ * // An example that sends a ping message when there is no outbound traffic
+ * // for 30 seconds.  The connection is closed when there is no inbound traffic
+ * // for 60 seconds.
  *
- * @see HashedWheelTimer
+ * public class MyPipelineFactory implements {@link ChannelPipelineFactory} {
+ *
+ *     private final {@link Timer} timer;
+ *
+ *     public MyPipelineFactory({@link Timer} timer) {
+ *         this.timer = timer;
+ *     }
+ *
+ *     public {@link ChannelPipeline} getPipeline() {
+ *         return {@link Channels}.pipeline(
+ *             <b>new {@link IdleStateHandler}(timer, 60, 30, 0), // timer must be shared.</b>
+ *             new MyHandler());
+ *     }
+ * }
+ *
+ * // Handler should handle the {@link IdleStateEvent} triggered by {@link IdleStateHandler}.
+ * public class MyHandler extends {@link IdleStateAwareChannelHandler} {
+ *
+ *     {@code @Override}
+ *     public void channelIdle({@link ChannelHandlerContext} ctx, {@link IdleStateEvent} e) {
+ *         if (e.getState() == {@link IdleState}.READER_IDLE) {
+ *             e.getChannel().close();
+ *         } else if (e.getState() == {@link IdleState}.WRITER_IDLE) {
+ *             e.getChannel().write(new PingMessage());
+ *         }
+ *     }
+ * }
+ *
+ * {@link ServerBootstrap} bootstrap = ...;
+ * {@link Timer} timer = new {@link HashedWheelTimer}();
+ * ...
+ * bootstrap.setPipelineFactory(new MyPipelineFactory(timer));
+ * ...
+ * </pre>
+ *
+ * The {@link Timer} which was specified when the {@link ReadTimeoutHandler} is
+ * created should be stopped manually by calling {@link #releaseExternalResources()}
+ * or {@link Timer#stop()} when your application shuts down.
+ *
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2224 $, $Date: 2010-03-30 10:02:32 +0200 (Tue, 30 Mar 2010) $
+ *
  * @see ReadTimeoutHandler
  * @see WriteTimeoutHandler
+ *
+ * @apiviz.landmark
+ * @apiviz.uses org.jboss.netty.util.HashedWheelTimer
+ * @apiviz.has org.jboss.netty.handler.timeout.IdleStateEvent oneway - - triggers
  */
-@ChannelPipelineCoverage("one")
 public class IdleStateHandler extends SimpleChannelUpstreamHandler
                              implements LifeCycleAwareChannelHandler,
                                         ExternalResourceReleasable {
@@ -86,17 +128,14 @@ public class IdleStateHandler extends SimpleChannelUpstreamHandler
 
     final long readerIdleTimeMillis;
     volatile Timeout readerIdleTimeout;
-    private volatile ReaderIdleTimeoutTask readerIdleTimeoutTask;
     volatile long lastReadTime;
 
     final long writerIdleTimeMillis;
     volatile Timeout writerIdleTimeout;
-    private volatile WriterIdleTimeoutTask writerIdleTimeoutTask;
     volatile long lastWriteTime;
 
     final long allIdleTimeMillis;
     volatile Timeout allIdleTimeout;
-    private volatile AllIdleTimeoutTask allIdleTimeoutTask;
 
     /**
      * Creates a new instance.
@@ -163,9 +202,21 @@ public class IdleStateHandler extends SimpleChannelUpstreamHandler
         }
 
         this.timer = timer;
-        readerIdleTimeMillis = unit.toMillis(readerIdleTime);
-        writerIdleTimeMillis = unit.toMillis(writerIdleTime);
-        allIdleTimeMillis = unit.toMillis(allIdleTime);
+        if (readerIdleTime <= 0) {
+            readerIdleTimeMillis = 0;
+        } else {
+            readerIdleTimeMillis = Math.max(unit.toMillis(readerIdleTime), 1);
+        }
+        if (writerIdleTime <= 0) {
+            writerIdleTimeMillis = 0;
+        } else {
+            writerIdleTimeMillis = Math.max(unit.toMillis(writerIdleTime), 1);
+        }
+        if (allIdleTime <= 0) {
+            allIdleTimeMillis = 0;
+        } else {
+            allIdleTimeMillis = Math.max(unit.toMillis(allIdleTime), 1);
+        }
     }
 
     /**
@@ -178,7 +229,15 @@ public class IdleStateHandler extends SimpleChannelUpstreamHandler
     }
 
     public void beforeAdd(ChannelHandlerContext ctx) throws Exception {
-        initialize(ctx);
+        if (ctx.getPipeline().isAttached()) {
+            // channelOpen event has been fired already, which means
+            // this.channelOpen() will not be invoked.
+            // We have to initialize here instead.
+            initialize(ctx);
+        } else {
+            // channelOpen event has not been fired yet.
+            // this.channelOpen() will be invoked and initialization will occur there.
+        }
     }
 
     public void afterAdd(ChannelHandlerContext ctx) throws Exception {
@@ -196,6 +255,9 @@ public class IdleStateHandler extends SimpleChannelUpstreamHandler
     @Override
     public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e)
             throws Exception {
+        // This method will be invoked only if this handler was added
+        // before channelOpen event is fired.  If a user adds this handler
+        // after the channelOpen event, initialize() will be called by beforeAdd().
         initialize(ctx);
         ctx.sendUpstream(e);
     }
@@ -225,39 +287,36 @@ public class IdleStateHandler extends SimpleChannelUpstreamHandler
 
     private void initialize(ChannelHandlerContext ctx) {
         lastReadTime = lastWriteTime = System.currentTimeMillis();
-        readerIdleTimeoutTask = new ReaderIdleTimeoutTask(ctx);
-        writerIdleTimeoutTask = new WriterIdleTimeoutTask(ctx);
-        allIdleTimeoutTask = new AllIdleTimeoutTask(ctx);
         if (readerIdleTimeMillis > 0) {
             readerIdleTimeout = timer.newTimeout(
-                    readerIdleTimeoutTask, readerIdleTimeMillis, TimeUnit.MILLISECONDS);
+                    new ReaderIdleTimeoutTask(ctx),
+                    readerIdleTimeMillis, TimeUnit.MILLISECONDS);
         }
         if (writerIdleTimeMillis > 0) {
             writerIdleTimeout = timer.newTimeout(
-                    writerIdleTimeoutTask, writerIdleTimeMillis, TimeUnit.MILLISECONDS);
+                    new WriterIdleTimeoutTask(ctx),
+                    writerIdleTimeMillis, TimeUnit.MILLISECONDS);
         }
         if (allIdleTimeMillis > 0) {
             allIdleTimeout = timer.newTimeout(
-                    allIdleTimeoutTask, allIdleTimeMillis, TimeUnit.MILLISECONDS);
+                    new AllIdleTimeoutTask(ctx),
+                    allIdleTimeMillis, TimeUnit.MILLISECONDS);
         }
     }
 
     private void destroy() {
         if (readerIdleTimeout != null) {
             readerIdleTimeout.cancel();
+            readerIdleTimeout = null;
         }
         if (writerIdleTimeout != null) {
             writerIdleTimeout.cancel();
+            writerIdleTimeout = null;
         }
         if (allIdleTimeout != null) {
             allIdleTimeout.cancel();
+            allIdleTimeout = null;
         }
-        readerIdleTimeout = null;
-        readerIdleTimeoutTask = null;
-        writerIdleTimeout = null;
-        writerIdleTimeoutTask = null;
-        allIdleTimeout = null;
-        allIdleTimeoutTask = null;
     }
 
     protected void channelIdle(

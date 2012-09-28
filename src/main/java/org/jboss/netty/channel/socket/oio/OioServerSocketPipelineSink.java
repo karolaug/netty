@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.socket.oio;
 
@@ -45,10 +38,10 @@ import org.jboss.netty.util.internal.IoWorkerRunnable;
 
 /**
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1338 $, $Date: 2009-06-10 01:56:37 -0700 (Wed, 10 Jun 2009) $
+ * @version $Rev: 2352 $, $Date: 2010-08-26 05:13:14 +0200 (Thu, 26 Aug 2010) $
  *
  */
 class OioServerSocketPipelineSink extends AbstractChannelSink {
@@ -154,8 +147,7 @@ class OioServerSocketPipelineSink extends AbstractChannelSink {
                     new IoWorkerRunnable(
                             new ThreadRenamingRunnable(
                                     new Boss(channel),
-                                    "Old I/O server boss (channelId: " +
-                                    channel.getId() + ", " + localAddress + ')')));
+                                    "Old I/O server boss (" + channel + ')')));
             bossStarted = true;
         } catch (Throwable t) {
             future.setFailure(t);
@@ -171,14 +163,23 @@ class OioServerSocketPipelineSink extends AbstractChannelSink {
         boolean bound = channel.isBound();
         try {
             channel.socket.close();
-            if (channel.setClosed()) {
-                future.setSuccess();
-                if (bound) {
-                    fireChannelUnbound(channel);
+
+            // Make sure the boss thread is not running so that that the future
+            // is notified after a new connection cannot be accepted anymore.
+            // See NETTY-256 for more information.
+            channel.shutdownLock.lock();
+            try {
+                if (channel.setClosed()) {
+                    future.setSuccess();
+                    if (bound) {
+                        fireChannelUnbound(channel);
+                    }
+                    fireChannelClosed(channel);
+                } else {
+                    future.setSuccess();
                 }
-                fireChannelClosed(channel);
-            } else {
-                future.setSuccess();
+            } finally {
+                channel.shutdownLock.unlock();
             }
         } catch (Throwable t) {
             future.setFailure(t);
@@ -194,56 +195,58 @@ class OioServerSocketPipelineSink extends AbstractChannelSink {
         }
 
         public void run() {
-            while (channel.isBound()) {
-                try {
-                    Socket acceptedSocket = channel.socket.accept();
+            channel.shutdownLock.lock();
+            try {
+                while (channel.isBound()) {
                     try {
-                        ChannelPipeline pipeline =
-                            channel.getConfig().getPipelineFactory().getPipeline();
-                        final OioAcceptedSocketChannel acceptedChannel =
-                            new OioAcceptedSocketChannel(
-                                    channel,
-                                    channel.getFactory(),
-                                    pipeline,
-                                    OioServerSocketPipelineSink.this,
-                                    acceptedSocket);
-                        workerExecutor.execute(
-                                new IoWorkerRunnable(
-                                        new ThreadRenamingRunnable(
-                                                new OioWorker(acceptedChannel),
-                                                "Old I/O server worker (parentId: " +
-                                                channel.getId() + ", channelId: " +
-                                                acceptedChannel.getId() + ", " +
-                                                channel.getRemoteAddress() + " => " +
-                                                channel.getLocalAddress() + ')')));
-                    } catch (Exception e) {
-                        logger.warn(
-                                "Failed to initialize an accepted socket.", e);
+                        Socket acceptedSocket = channel.socket.accept();
                         try {
-                            acceptedSocket.close();
-                        } catch (IOException e2) {
+                            ChannelPipeline pipeline =
+                                channel.getConfig().getPipelineFactory().getPipeline();
+                            final OioAcceptedSocketChannel acceptedChannel =
+                                new OioAcceptedSocketChannel(
+                                        channel,
+                                        channel.getFactory(),
+                                        pipeline,
+                                        OioServerSocketPipelineSink.this,
+                                        acceptedSocket);
+                            workerExecutor.execute(
+                                    new IoWorkerRunnable(
+                                            new ThreadRenamingRunnable(
+                                                    new OioWorker(acceptedChannel),
+                                                    "Old I/O server worker (parentId: " +
+                                                    channel.getId() + ", " + channel + ')')));
+                        } catch (Exception e) {
                             logger.warn(
-                                    "Failed to close a partially accepted socket.",
-                                    e2);
+                                    "Failed to initialize an accepted socket.", e);
+                            try {
+                                acceptedSocket.close();
+                            } catch (IOException e2) {
+                                logger.warn(
+                                        "Failed to close a partially accepted socket.",
+                                        e2);
+                            }
+                        }
+                    } catch (SocketTimeoutException e) {
+                        // Thrown every second to stop when requested.
+                    } catch (Throwable e) {
+                        // Do not log the exception if the server socket was closed
+                        // by a user.
+                        if (!channel.socket.isBound() || channel.socket.isClosed()) {
+                            break;
+                        }
+
+                        logger.warn(
+                                "Failed to accept a connection.", e);
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e1) {
+                            // Ignore
                         }
                     }
-                } catch (SocketTimeoutException e) {
-                    // Thrown every second to stop when requested.
-                } catch (IOException e) {
-                    // Do not log the exception if the server socket was closed
-                    // by a user.
-                    if (!channel.socket.isBound() || channel.socket.isClosed()) {
-                        break;
-                    }
-
-                    logger.warn(
-                            "Failed to accept a connection.", e);
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e1) {
-                        // Ignore
-                    }
                 }
+            } finally {
+                channel.shutdownLock.unlock();
             }
         }
     }

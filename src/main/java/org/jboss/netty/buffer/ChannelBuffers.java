@@ -1,31 +1,32 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.buffer;
 
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.UnsupportedCharsetException;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CoderResult;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.jboss.netty.util.CharsetUtil;
 
 
 /**
@@ -36,13 +37,13 @@ import java.nio.charset.UnsupportedCharsetException;
  * This classes is intended to be used with Java 5 static import statement:
  *
  * <pre>
- * import static org.jboss.netty.buffer.ChannelBuffers.*;
+ * import static org.jboss.netty.buffer.{@link ChannelBuffers}.*;
  *
- * ChannelBuffer heapBuffer = buffer(128);
- * ChannelBuffer directBuffer = directBuffer(256);
- * ChannelBuffer dynamicBuffer = dynamicBuffer(512);
- * ChannelBuffer wrappedBuffer = wrappedBuffer(new byte[128], new byte[256]);
- * ChannelBuffer copiedBuffer = copiedBuffer(ByteBuffer.allocate(128));
+ * {@link ChannelBuffer} heapBuffer    = buffer(128);
+ * {@link ChannelBuffer} directBuffer  = directBuffer(256);
+ * {@link ChannelBuffer} dynamicBuffer = dynamicBuffer(512);
+ * {@link ChannelBuffer} wrappedBuffer = wrappedBuffer(new byte[128], new byte[256]);
+ * {@link ChannelBuffer} copiedBuffe r = copiedBuffer({@link ByteBuffer}.allocate(128));
  * </pre>
  *
  * <h3>Allocating a new buffer</h3>
@@ -81,10 +82,10 @@ import java.nio.charset.UnsupportedCharsetException;
  * of a new buffer type, generation of hex dump and swapping an integer's
  * byte order.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1402 $, $Date: 2009-06-17 01:28:03 -0700 (Wed, 17 Jun 2009) $
+ * @version $Rev: 2269 $, $Date: 2010-05-06 09:37:27 +0200 (Thu, 06 May 2010) $
  *
  * @apiviz.landmark
  * @apiviz.has org.jboss.netty.buffer.ChannelBuffer oneway - - creates
@@ -211,6 +212,12 @@ public class ChannelBuffers {
         return new DynamicChannelBuffer(endianness, estimatedLength);
     }
 
+    /**
+     * Creates a new big-endian dynamic buffer with the specified estimated
+     * data length using the specified factory.  More accurate estimation yields
+     * less unexpected reallocation overhead.  The new buffer's {@code readerIndex}
+     * and {@code writerIndex} are {@code 0}.
+     */
     public static ChannelBuffer dynamicBuffer(int estimatedLength, ChannelBufferFactory factory) {
         if (factory == null) {
             throw new NullPointerException("factory");
@@ -219,6 +226,12 @@ public class ChannelBuffers {
         return new DynamicChannelBuffer(factory.getDefaultOrder(), estimatedLength, factory);
     }
 
+    /**
+     * Creates a new dynamic buffer with the specified endianness and
+     * the specified estimated data length using the specified factory.
+     * More accurate estimation yields less unexpected reallocation overhead.
+     * The new buffer's {@code readerIndex} and {@code writerIndex} are {@code 0}.
+     */
     public static ChannelBuffer dynamicBuffer(ByteOrder endianness, int estimatedLength, ChannelBufferFactory factory) {
         return new DynamicChannelBuffer(endianness, estimatedLength, factory);
     }
@@ -292,15 +305,15 @@ public class ChannelBuffers {
 
     /**
      * Creates a new buffer which wraps the specified NIO buffer's current
-     * slice.  A modification on the specified buffer's content and endianness
-     * will be visible to the returned buffer.
+     * slice.  A modification on the specified buffer's content will be
+     * visible to the returned buffer.
      */
     public static ChannelBuffer wrappedBuffer(ByteBuffer buffer) {
         if (!buffer.hasRemaining()) {
             return EMPTY_BUFFER;
         }
-        if (!buffer.isReadOnly() && buffer.hasArray()) {
-            return wrappedBuffer(buffer.array(), buffer.arrayOffset(),buffer.remaining());
+        if (buffer.hasArray()) {
+            return wrappedBuffer(buffer.order(), buffer.array(), buffer.arrayOffset(),buffer.remaining());
         } else {
             return new ByteBufferBackedChannelBuffer(buffer);
         }
@@ -345,20 +358,38 @@ public class ChannelBuffers {
             }
             break;
         default:
-            ChannelBuffer[] wrappedBuffers = new ChannelBuffer[arrays.length];
-            for (int i = 0; i < arrays.length; i ++) {
-                wrappedBuffers[i] = wrappedBuffer(endianness, arrays[i]);
+            // Get the list of the component, while guessing the byte order.
+            final List<ChannelBuffer> components = new ArrayList<ChannelBuffer>(arrays.length);
+            for (byte[] a: arrays) {
+                if (a == null) {
+                    break;
+                }
+                if (a.length > 0) {
+                    components.add(wrappedBuffer(endianness, a));
+                }
             }
-            return wrappedBuffer(wrappedBuffers);
+            return compositeBuffer(endianness, components);
         }
 
         return EMPTY_BUFFER;
     }
 
+    private static ChannelBuffer compositeBuffer(
+            ByteOrder endianness, List<ChannelBuffer> components) {
+        switch (components.size()) {
+        case 0:
+            return EMPTY_BUFFER;
+        case 1:
+            return components.get(0);
+        default:
+            return new CompositeChannelBuffer(endianness, components);
+        }
+    }
+
     /**
-     * Creates a new composite buffer which wraps the specified buffers without
-     * copying them.  A modification on the specified buffers' content will be
-     * visible to the returned buffer.
+     * Creates a new composite buffer which wraps the readable bytes of the
+     * specified buffers without copying them.  A modification on the content
+     * of the specified buffers will be visible to the returned buffer.
      *
      * @throws IllegalArgumentException
      *         if the specified buffers' endianness are different from each
@@ -374,19 +405,41 @@ public class ChannelBuffers {
             }
             break;
         default:
-            for (ChannelBuffer b: buffers) {
-                if (b.readable()) {
-                    return new CompositeChannelBuffer(buffers);
+            ByteOrder order = null;
+            final List<ChannelBuffer> components = new ArrayList<ChannelBuffer>(buffers.length);
+            for (ChannelBuffer c: buffers) {
+                if (c == null) {
+                    break;
+                }
+                if (c.readable()) {
+                    if (order != null) {
+                        if (!order.equals(c.order())) {
+                            throw new IllegalArgumentException(
+                                    "inconsistent byte order");
+                        }
+                    } else {
+                        order = c.order();
+                    }
+                    if (c instanceof CompositeChannelBuffer) {
+                        // Expand nested composition.
+                        components.addAll(
+                                ((CompositeChannelBuffer) c).decompose(
+                                        c.readerIndex(), c.readableBytes()));
+                    } else {
+                        // An ordinary buffer (non-composite)
+                        components.add(c.slice());
+                    }
                 }
             }
+            return compositeBuffer(order, components);
         }
         return EMPTY_BUFFER;
     }
 
     /**
-     * Creates a new composite buffer which wraps the specified NIO buffers
-     * without copying them.  A modification on the specified buffers' content
-     * will be visible to the returned buffer.
+     * Creates a new composite buffer which wraps the slices of the specified
+     * NIO buffers without copying them.  A modification on the content of the
+     * specified buffers will be visible to the returned buffer.
      *
      * @throws IllegalArgumentException
      *         if the specified buffers' endianness are different from each
@@ -402,11 +455,25 @@ public class ChannelBuffers {
             }
             break;
         default:
-            ChannelBuffer[] wrappedBuffers = new ChannelBuffer[buffers.length];
-            for (int i = 0; i < buffers.length; i ++) {
-                wrappedBuffers[i] = wrappedBuffer(buffers[i]);
+            ByteOrder order = null;
+            final List<ChannelBuffer> components = new ArrayList<ChannelBuffer>(buffers.length);
+            for (ByteBuffer b: buffers) {
+                if (b == null) {
+                    break;
+                }
+                if (b.hasRemaining()) {
+                    if (order != null) {
+                        if (!order.equals(b.order())) {
+                            throw new IllegalArgumentException(
+                                    "inconsistent byte order");
+                        }
+                    } else {
+                        order = b.order();
+                    }
+                    components.add(wrappedBuffer(b));
+                }
             }
-            return wrappedBuffer(wrappedBuffers);
+            return compositeBuffer(order, components);
         }
 
         return EMPTY_BUFFER;
@@ -610,27 +677,154 @@ public class ChannelBuffers {
 
     /**
      * Creates a new big-endian buffer whose content is the specified
-     * {@code string} encoded by the specified {@code charsetName}.
+     * {@code string} encoded in the specified {@code charset}.
      * The new buffer's {@code readerIndex} and {@code writerIndex} are
      * {@code 0} and the length of the encoded string respectively.
      */
-    public static ChannelBuffer copiedBuffer(String string, String charsetName) {
-        return copiedBuffer(BIG_ENDIAN, string, charsetName);
+    public static ChannelBuffer copiedBuffer(CharSequence string, Charset charset) {
+        return copiedBuffer(BIG_ENDIAN, string, charset);
+    }
+
+    /**
+     * Creates a new big-endian buffer whose content is a subregion of
+     * the specified {@code string} encoded in the specified {@code charset}.
+     * The new buffer's {@code readerIndex} and {@code writerIndex} are
+     * {@code 0} and the length of the encoded string respectively.
+     */
+    public static ChannelBuffer copiedBuffer(
+            CharSequence string, int offset, int length, Charset charset) {
+        return copiedBuffer(BIG_ENDIAN, string, offset, length, charset);
     }
 
     /**
      * Creates a new buffer with the specified {@code endianness} whose
-     * content is the specified {@code string} encoded by the specified
-     * {@code charsetName}.  The new buffer's {@code readerIndex} and
+     * content is the specified {@code string} encoded in the specified
+     * {@code charset}.  The new buffer's {@code readerIndex} and
      * {@code writerIndex} are {@code 0} and the length of the encoded string
      * respectively.
      */
-    public static ChannelBuffer copiedBuffer(ByteOrder endianness, String string, String charsetName) {
-        try {
-            return wrappedBuffer(endianness, string.getBytes(charsetName));
-        } catch (UnsupportedEncodingException e) {
-            throw new UnsupportedCharsetException(charsetName);
+    public static ChannelBuffer copiedBuffer(ByteOrder endianness, CharSequence string, Charset charset) {
+        if (string == null) {
+            throw new NullPointerException("string");
         }
+
+        if (string instanceof CharBuffer) {
+            return copiedBuffer(endianness, (CharBuffer) string, charset);
+        }
+
+        return copiedBuffer(endianness, CharBuffer.wrap(string), charset);
+    }
+
+    /**
+     * Creates a new buffer with the specified {@code endianness} whose
+     * content is a subregion of the specified {@code string} encoded in the
+     * specified {@code charset}.  The new buffer's {@code readerIndex} and
+     * {@code writerIndex} are {@code 0} and the length of the encoded string
+     * respectively.
+     */
+    public static ChannelBuffer copiedBuffer(
+            ByteOrder endianness, CharSequence string, int offset, int length, Charset charset) {
+        if (string == null) {
+            throw new NullPointerException("string");
+        }
+        if (length == 0) {
+            return EMPTY_BUFFER;
+        }
+
+        if (string instanceof CharBuffer) {
+            CharBuffer buf = (CharBuffer) string;
+            if (buf.hasArray()) {
+                return copiedBuffer(
+                        endianness,
+                        buf.array(),
+                        buf.arrayOffset() + buf.position() + offset,
+                        length, charset);
+            }
+
+            buf = buf.slice();
+            buf.limit(length);
+            buf.position(offset);
+            return copiedBuffer(endianness, buf, charset);
+        }
+
+        return copiedBuffer(
+                endianness, CharBuffer.wrap(string, offset, offset + length),
+                charset);
+    }
+
+    /**
+     * Creates a new big-endian buffer whose content is the specified
+     * {@code array} encoded in the specified {@code charset}.
+     * The new buffer's {@code readerIndex} and {@code writerIndex} are
+     * {@code 0} and the length of the encoded string respectively.
+     */
+    public static ChannelBuffer copiedBuffer(char[] array, Charset charset) {
+        return copiedBuffer(BIG_ENDIAN, array, 0, array.length, charset);
+    }
+
+    /**
+     * Creates a new big-endian buffer whose content is a subregion of
+     * the specified {@code array} encoded in the specified {@code charset}.
+     * The new buffer's {@code readerIndex} and {@code writerIndex} are
+     * {@code 0} and the length of the encoded string respectively.
+     */
+    public static ChannelBuffer copiedBuffer(
+            char[] array, int offset, int length, Charset charset) {
+        return copiedBuffer(BIG_ENDIAN, array, offset, length, charset);
+    }
+
+    /**
+     * Creates a new buffer with the specified {@code endianness} whose
+     * content is the specified {@code array} encoded in the specified
+     * {@code charset}.  The new buffer's {@code readerIndex} and
+     * {@code writerIndex} are {@code 0} and the length of the encoded string
+     * respectively.
+     */
+    public static ChannelBuffer copiedBuffer(ByteOrder endianness, char[] array, Charset charset) {
+        return copiedBuffer(endianness, array, 0, array.length, charset);
+    }
+
+    /**
+     * Creates a new buffer with the specified {@code endianness} whose
+     * content is a subregion of the specified {@code array} encoded in the
+     * specified {@code charset}.  The new buffer's {@code readerIndex} and
+     * {@code writerIndex} are {@code 0} and the length of the encoded string
+     * respectively.
+     */
+    public static ChannelBuffer copiedBuffer(
+            ByteOrder endianness, char[] array, int offset, int length, Charset charset) {
+        if (array == null) {
+            throw new NullPointerException("array");
+        }
+        if (length == 0) {
+            return EMPTY_BUFFER;
+        }
+        return copiedBuffer(
+                endianness, CharBuffer.wrap(array, offset, length), charset);
+    }
+
+    private static ChannelBuffer copiedBuffer(ByteOrder endianness, CharBuffer buffer, Charset charset) {
+        CharBuffer src = buffer;
+        ByteBuffer dst = ChannelBuffers.encodeString(src, charset);
+        ChannelBuffer result = wrappedBuffer(endianness, dst.array());
+        result.writerIndex(dst.remaining());
+        return result;
+    }
+
+    /**
+     * @deprecated Use {@link #copiedBuffer(CharSequence, Charset)} instead.
+     */
+    @Deprecated
+    public static ChannelBuffer copiedBuffer(String string, String charsetName) {
+        return copiedBuffer(string, Charset.forName(charsetName));
+    }
+
+    /**
+     * @deprecated Use {@link #copiedBuffer(ByteOrder, CharSequence, Charset)} instead.
+     */
+    @Deprecated
+    public static ChannelBuffer copiedBuffer(ByteOrder endianness, String string, String charsetName) {
+        return copiedBuffer(endianness, string, Charset.forName(charsetName));
     }
 
     /**
@@ -927,6 +1121,45 @@ public class ChannelBuffers {
         }
 
         return -1;
+    }
+
+    static ByteBuffer encodeString(CharBuffer src, Charset charset) {
+        final CharsetEncoder encoder = CharsetUtil.getEncoder(charset);
+        final ByteBuffer dst = ByteBuffer.allocate(
+                (int) ((double) src.remaining() * encoder.maxBytesPerChar()));
+        try {
+            CoderResult cr = encoder.encode(src, dst, true);
+            if (!cr.isUnderflow()) {
+                cr.throwException();
+            }
+            cr = encoder.flush(dst);
+            if (!cr.isUnderflow()) {
+                cr.throwException();
+            }
+        } catch (CharacterCodingException x) {
+            throw new IllegalStateException(x);
+        }
+        dst.flip();
+        return dst;
+    }
+
+    static String decodeString(ByteBuffer src, Charset charset) {
+        final CharsetDecoder decoder = CharsetUtil.getDecoder(charset);
+        final CharBuffer dst = CharBuffer.allocate(
+                (int) ((double) src.remaining() * decoder.maxCharsPerByte()));
+        try {
+            CoderResult cr = decoder.decode(src, dst, true);
+            if (!cr.isUnderflow()) {
+                cr.throwException();
+            }
+            cr = decoder.flush(dst);
+            if (!cr.isUnderflow()) {
+                cr.throwException();
+            }
+        } catch (CharacterCodingException x) {
+            throw new IllegalStateException(x);
+        }
+        return dst.flip().toString();
     }
 
     private ChannelBuffers() {

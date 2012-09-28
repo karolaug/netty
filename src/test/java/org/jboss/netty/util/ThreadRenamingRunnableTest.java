@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.util;
 
@@ -28,15 +21,14 @@ import static org.junit.Assert.*;
 import java.security.Permission;
 import java.util.concurrent.Executor;
 
-import org.jboss.netty.util.internal.ImmediateExecutor;
 import org.junit.Test;
 
 
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1338 $, $Date: 2009-06-10 01:56:37 -0700 (Wed, 10 Jun 2009) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  *
  */
 public class ThreadRenamingRunnableTest {
@@ -54,7 +46,7 @@ public class ThreadRenamingRunnableTest {
     @Test
     public void testWithoutSecurityManager() throws Exception {
         final String oldThreadName = Thread.currentThread().getName();
-        Executor e = ImmediateExecutor.INSTANCE;
+        Executor e = new ImmediateExecutor();
         e.execute(new ThreadRenamingRunnable(
                 new Runnable() {
                     public void run() {
@@ -69,7 +61,7 @@ public class ThreadRenamingRunnableTest {
     @Test
     public void testWithSecurityManager() throws Exception {
         final String oldThreadName = Thread.currentThread().getName();
-        Executor e = ImmediateExecutor.INSTANCE;
+        Executor e = new ImmediateExecutor();
         System.setSecurityManager(new SecurityManager() {
 
             @Override
@@ -99,4 +91,16 @@ public class ThreadRenamingRunnableTest {
             assertEquals(oldThreadName, Thread.currentThread().getName());
         }
     }
+
+    private static class ImmediateExecutor implements Executor {
+
+        ImmediateExecutor() {
+            super();
+        }
+
+        public void execute(Runnable command) {
+            command.run();
+        }
+    }
+
 }

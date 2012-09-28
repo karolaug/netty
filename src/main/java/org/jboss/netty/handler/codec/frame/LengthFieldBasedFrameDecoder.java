@@ -1,30 +1,26 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.frame;
 
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBufferFactory;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.Channels;
+import org.jboss.netty.handler.codec.serialization.ObjectDecoder;
 
 /**
  * A decoder that splits the received {@link ChannelBuffer}s dynamically by the
@@ -34,15 +30,21 @@ import org.jboss.netty.channel.ChannelHandlerContext;
  * <p>
  * {@link LengthFieldBasedFrameDecoder} has many configuration parameters so
  * that it can decode any message with a length field, which is often seen in
- * proprietary client-server protocols.  Here are some example that will give
+ * proprietary client-server protocols. Here are some example that will give
  * you the basic idea on which option does what.
  *
  * <h3>2 bytes length field at offset 0, do not strip header</h3>
+ *
+ * The value of the length field in this example is <tt>12 (0x0C)</tt> which
+ * represents the length of "HELLO, WORLD".  By default, the decoder assumes
+ * that the length field represents the number of the bytes that follows the
+ * length field.  Therefore, it can be decoded with the simplistic parameter
+ * combination.
  * <pre>
  * <b>lengthFieldOffset</b>   = <b>0</b>
  * <b>lengthFieldLength</b>   = <b>2</b>
- * <b>lengthAdjustment</b>    = <b>0</b> (default)
- * <b>initialBytesToStrip</b> = <b>0</b> (default)
+ * lengthAdjustment    = 0
+ * initialBytesToStrip = 0 (= do not strip header)
  *
  * BEFORE DECODE (14 bytes)         AFTER DECODE (14 bytes)
  * +--------+----------------+      +--------+----------------+
@@ -52,11 +54,17 @@ import org.jboss.netty.channel.ChannelHandlerContext;
  * </pre>
  *
  * <h3>2 bytes length field at offset 0, strip header</h3>
+ *
+ * Because we can get the length of the content by calling
+ * {@link ChannelBuffer#readableBytes()}, you might want to strip the length
+ * field by specifying <tt>initialBytesToStrip</tt>.  In this example, we
+ * specified <tt>2</tt>, that is same with the length of the length field, to
+ * strip the first two bytes.
  * <pre>
- * <b>lengthFieldOffset</b>   = <b>0</b>
- * <b>lengthFieldLength</b>   = <b>2</b>
- * <b>lengthAdjustment</b>    = <b>0</b>
- * <b>initialBytesToStrip</b> = <b>2</b>
+ * lengthFieldOffset   = 0
+ * lengthFieldLength   = 2
+ * lengthAdjustment    = 0
+ * <b>initialBytesToStrip</b> = <b>2</b> (= the length of the Length field)
  *
  * BEFORE DECODE (14 bytes)         AFTER DECODE (12 bytes)
  * +--------+----------------+      +----------------+
@@ -65,25 +73,80 @@ import org.jboss.netty.channel.ChannelHandlerContext;
  * +--------+----------------+      +----------------+
  * </pre>
  *
- * <h3>3 bytes length field at the end of 5 bytes header, strip header</h3>
- * <pre>
- * <b>lengthFieldOffset</b>   = <b>2</b> (= 5 - 3)
- * <b>lengthFieldLength</b>   = <b>3</b>
- * <b>lengthAdjustment</b>    = <b>0</b>
- * <b>initialBytesToStrip</b> = <b>5</b>
+ * <h3>2 bytes length field at offset 0, do not strip header, the length field
+ *     represents the length of the whole message</h3>
  *
- * BEFORE DECODE (17 bytes)                      AFTER DECODE (12 bytes)
- * +----------+----------+----------------+      +----------------+
- * | Header 1 |  Length  | Actual Content |----->| Actual Content |
- * |  0xCAFE  | 0x00000C | "HELLO, WORLD" |      | "HELLO, WORLD" |
- * +----------+----------+----------------+      +----------------+
+ * In most cases, the length field represents the length of the message body
+ * only, as shown in the previous examples.  However, in some protocols, the
+ * length field represents the length of the whole message, including the
+ * message header.  In such a case, we specify a non-zero
+ * <tt>lengthAdjustment</tt>.  Because the length value in this example message
+ * is always greater than the body length by <tt>2</tt>, we specify <tt>-2</tt>
+ * as <tt>lengthAdjustment</tt> for compensation.
+ * <pre>
+ * lengthFieldOffset   =  0
+ * lengthFieldLength   =  2
+ * <b>lengthAdjustment</b>    = <b>-2</b> (= the length of the Length field)
+ * initialBytesToStrip =  0
+ *
+ * BEFORE DECODE (14 bytes)         AFTER DECODE (14 bytes)
+ * +--------+----------------+      +--------+----------------+
+ * | Length | Actual Content |----->| Length | Actual Content |
+ * | 0x000E | "HELLO, WORLD" |      | 0x000E | "HELLO, WORLD" |
+ * +--------+----------------+      +--------+----------------+
+ * </pre>
+ *
+ * <h3>3 bytes length field at the end of 5 bytes header, do not strip header</h3>
+ *
+ * The following message is a simple variation of the first example.  An extra
+ * header value is prepended to the message.  <tt>lengthAdjustment</tt> is zero
+ * again because the decoder always takes the length of the prepended data into
+ * account during frame length calculation.
+ * <pre>
+ * <b>lengthFieldOffset</b>   = <b>2</b> (= the length of Header 1)
+ * <b>lengthFieldLength</b>   = <b>3</b>
+ * lengthAdjustment    = 0
+ * initialBytesToStrip = 0
+ *
+ * BEFORE DECODE (17 bytes)                      AFTER DECODE (17 bytes)
+ * +----------+----------+----------------+      +----------+----------+----------------+
+ * | Header 1 |  Length  | Actual Content |----->| Header 1 |  Length  | Actual Content |
+ * |  0xCAFE  | 0x00000C | "HELLO, WORLD" |      |  0xCAFE  | 0x00000C | "HELLO, WORLD" |
+ * +----------+----------+----------------+      +----------+----------+----------------+
+ * </pre>
+ *
+ * <h3>3 bytes length field at the beginning of 5 bytes header, do not strip header</h3>
+ *
+ * This is an advanced example that shows the case where there is an extra
+ * header between the length field and the message body.  You have to specify a
+ * positive <tt>lengthAdjustment</tt> so that the decoder counts the extra
+ * header into the frame length calculation.
+ * <pre>
+ * lengthFieldOffset   = 0
+ * lengthFieldLength   = 3
+ * <b>lengthAdjustment</b>    = <b>2</b> (= the length of Header 1)
+ * initialBytesToStrip = 0
+ *
+ * BEFORE DECODE (17 bytes)                      AFTER DECODE (17 bytes)
+ * +----------+----------+----------------+      +----------+----------+----------------+
+ * |  Length  | Header 1 | Actual Content |----->|  Length  | Header 1 | Actual Content |
+ * | 0x00000C |  0xCAFE  | "HELLO, WORLD" |      | 0x00000C |  0xCAFE  | "HELLO, WORLD" |
+ * +----------+----------+----------------+      +----------+----------+----------------+
  * </pre>
  *
  * <h3>2 bytes length field at offset 1 in the middle of 4 bytes header,
  *     strip the first header field and the length field</h3>
+ *
+ * This is a combination of all the examples above.  There are the prepended
+ * header before the length field and the extra header after the length field.
+ * The prepended header affects the <tt>lengthFieldOffset</tt> and the extra
+ * header affects the <tt>lengthAdjustment</tt>.  We also specified a non-zero
+ * <tt>initialBytesToStrip</tt> to strip the length field and the prepended
+ * header from the frame.  If you don't want to strip the prepended header, you
+ * could specify <tt>0</tt> for <tt>initialBytesToSkip</tt>.
  * <pre>
- * <b>lengthFieldOffset</b>   = <b>1</b>
- * <b>lengthFieldLength</b>   = <b>2</b>
+ * lengthFieldOffset</b>   = 1 (= the length of HDR1)
+ * lengthFieldLength</b>   = 2
  * <b>lengthAdjustment</b>    = <b>1</b> (= the length of HDR2)
  * <b>initialBytesToStrip</b> = <b>3</b> (= the length of HDR1 + LEN)
  *
@@ -96,10 +159,17 @@ import org.jboss.netty.channel.ChannelHandlerContext;
  *
  * <h3>2 bytes length field at offset 1 in the middle of 4 bytes header,
  *     strip the first header field and the length field, the length field
- *     includes the header length</h3>
+ *     represents the length of the whole message</h3>
+ *
+ * Let's give another twist to the previous example.  The only difference from
+ * the previous example is that the length field represents the length of the
+ * whole message instead of the message body, just like the third example.
+ * We have to count the length of HDR1 and Length into <tt>lengthAdjustment</tt>.
+ * Please note that we don't need to take the length of HDR2 into account
+ * because the length field already includes the whole header length.
  * <pre>
- * <b>lengthFieldOffset</b>   = <b> 1</b>
- * <b>lengthFieldLength</b>   = <b> 2</b>
+ * lengthFieldOffset   =  1
+ * lengthFieldLength   =  2
  * <b>lengthAdjustment</b>    = <b>-3</b> (= the length of HDR1 + LEN, negative)
  * <b>initialBytesToStrip</b> = <b> 3</b>
  *
@@ -110,12 +180,11 @@ import org.jboss.netty.channel.ChannelHandlerContext;
  * +------+--------+------+----------------+      +------+----------------+
  * </pre>
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
  * @version $Rev:231 $, $Date:2008-06-12 16:44:50 +0900 (목, 12 6월 2008) $
  *
- * @apiviz.landmark
  * @see LengthFieldPrepender
  */
 public class LengthFieldBasedFrameDecoder extends FrameDecoder {
@@ -126,9 +195,9 @@ public class LengthFieldBasedFrameDecoder extends FrameDecoder {
     private final int lengthFieldEndOffset;
     private final int lengthAdjustment;
     private final int initialBytesToStrip;
-    private volatile boolean discardingTooLongFrame;
-    private volatile long tooLongFrameLength;
-    private volatile long bytesToDiscard;
+    private boolean discardingTooLongFrame;
+    private long tooLongFrameLength;
+    private long bytesToDiscard;
 
     /**
      * Creates a new instance.
@@ -224,16 +293,15 @@ public class LengthFieldBasedFrameDecoder extends FrameDecoder {
             if (bytesToDiscard == 0) {
                 // Reset to the initial state and tell the handlers that
                 // the frame was too large.
-                discardingTooLongFrame = false;
+                // TODO Let user choose when the exception should be raised - early or late?
+                //      If early, fail() should be called when discardingTooLongFrame is set to true.
                 long tooLongFrameLength = this.tooLongFrameLength;
                 this.tooLongFrameLength = 0;
-                throw new TooLongFrameException(
-                        "Adjusted frame length exceeds " + maxFrameLength +
-                        ": " + tooLongFrameLength);
+                fail(ctx, tooLongFrameLength);
             } else {
                 // Keep discarding.
-                return null;
             }
+            return null;
         }
 
         if (buffer.readableBytes() < lengthFieldEndOffset) {
@@ -298,6 +366,49 @@ public class LengthFieldBasedFrameDecoder extends FrameDecoder {
                     "than initialBytesToStrip: " + initialBytesToStrip);
         }
         buffer.skipBytes(initialBytesToStrip);
-        return buffer.readBytes(frameLengthInt - initialBytesToStrip);
+
+        // extract frame
+        int readerIndex = buffer.readerIndex();
+        int actualFrameLength = frameLengthInt - initialBytesToStrip;
+        ChannelBuffer frame = extractFrame(buffer, readerIndex, actualFrameLength);
+        buffer.readerIndex(readerIndex + actualFrameLength);
+        return frame;
+    }
+
+    /**
+     * Extract the sub-region of the specified buffer. This method is called by
+     * {@link #decode(ChannelHandlerContext, Channel, ChannelBuffer)} for each
+     * frame.  The default implementation returns a copy of the sub-region.
+     * For example, you could override this method to use an alternative
+     * {@link ChannelBufferFactory}.
+     * <p>
+     * If you are sure that the frame and its content are not accessed after
+     * the current {@link #decode(ChannelHandlerContext, Channel, ChannelBuffer)}
+     * call returns, you can even avoid memory copy by returning the sliced
+     * sub-region (i.e. <tt>return buffer.slice(index, length)</tt>).
+     * It's often useful when you convert the extracted frame into an object.
+     * Refer to the source code of {@link ObjectDecoder} to see how this method
+     * is overridden to avoid memory copy.
+     */
+    protected ChannelBuffer extractFrame(ChannelBuffer buffer, int index, int length) {
+        ChannelBuffer frame = buffer.factory().getBuffer(length);
+        frame.writeBytes(buffer, index, length);
+        return frame;
+    }
+
+    private void fail(ChannelHandlerContext ctx, long frameLength) {
+        if (frameLength > 0) {
+            Channels.fireExceptionCaught(
+                    ctx.getChannel(),
+                    new TooLongFrameException(
+                            "Adjusted frame length exceeds " + maxFrameLength +
+                            ": " + frameLength + " - discarded"));
+        } else {
+            Channels.fireExceptionCaught(
+                    ctx.getChannel(),
+                    new TooLongFrameException(
+                            "Adjusted frame length exceeds " + maxFrameLength +
+                            " - discarding"));
+        }
     }
 }

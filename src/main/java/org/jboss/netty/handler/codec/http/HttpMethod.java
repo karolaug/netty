@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.http;
 
@@ -30,9 +23,9 @@ import java.util.Map;
  * <a href="http://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
  * <a href="http://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  *
  * @apiviz.exclude
  */
@@ -69,6 +62,12 @@ public class HttpMethod implements Comparable<HttpMethod> {
     public static final HttpMethod PUT = new HttpMethod("PUT");
 
     /**
+     * The PATCH method requests that a set of changes described in the
+     * request entity be applied to the resource identified by the Request-URI.
+     */
+    public static final HttpMethod PATCH = new HttpMethod("PATCH");
+
+    /**
      * The DELETE method requests that the origin server delete the resource identified by the Request-URI.
      */
     public static final HttpMethod DELETE = new HttpMethod("DELETE");
@@ -92,6 +91,7 @@ public class HttpMethod implements Comparable<HttpMethod> {
         methodMap.put(HEAD.toString(), HEAD);
         methodMap.put(POST.toString(), POST);
         methodMap.put(PUT.toString(), PUT);
+        methodMap.put(PATCH.toString(), PATCH);
         methodMap.put(DELETE.toString(), DELETE);
         methodMap.put(TRACE.toString(), TRACE);
         methodMap.put(CONNECT.toString(), CONNECT);

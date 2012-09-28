@@ -1,28 +1,22 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.handler.codec.http;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -32,10 +26,15 @@ import org.jboss.netty.buffer.ChannelBuffers;
  * An HTTP message which provides common properties for {@link HttpRequest} and
  * {@link HttpResponse}.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
+ * @version $Rev: 2088 $, $Date: 2010-01-27 03:38:17 +0100 (Wed, 27 Jan 2010) $
+ *
+ * @see HttpHeaders
+ *
+ * @apiviz.landmark
+ * @apiviz.has org.jboss.netty.handler.codec.http.HttpChunk oneway - - is followed by
  */
 public interface HttpMessage {
 
@@ -52,10 +51,18 @@ public interface HttpMessage {
     /**
      * Returns the header values with the specified header name.
      *
-     * @return the {@link List} of header values of {@code null} if there is
-     *         no such header
+     * @return the {@link List} of header values.  An empty list if there is no
+     *         such header.
      */
     List<String> getHeaders(String name);
+
+    /**
+     * Returns the all header names and values that this message contains.
+     *
+     * @return the {@link List} of the header name-value pairs.  An empty list
+     *         if there is no header in this message.
+     */
+    List<Map.Entry<String, String>> getHeaders();
 
     /**
      * Returns {@code true} if and only if there is a header with the specified
@@ -74,7 +81,13 @@ public interface HttpMessage {
     HttpVersion getProtocolVersion();
 
     /**
-     * Returns the content of this message.  If there is no content, an
+     * Sets the protocol version of this message.
+     */
+    void setProtocolVersion(HttpVersion version);
+
+    /**
+     * Returns the content of this message.  If there is no content or
+     * {@link #isChunked()} returns {@code true}, an
      * {@link ChannelBuffers#EMPTY_BUFFER} is returned.
      */
     ChannelBuffer getContent();
@@ -88,19 +101,19 @@ public interface HttpMessage {
     /**
      * Adds a new header with the specified name and value.
      */
-    void addHeader(String name, String value);
+    void addHeader(String name, Object value);
 
     /**
      * Sets a new header with the specified name and value.  If there is an
      * existing header with the same name, the existing header is removed.
      */
-    void setHeader(String name, String value);
+    void setHeader(String name, Object value);
 
     /**
      * Sets a new header with the specified name and values.  If there is an
      * existing header with the same name, the existing header is removed.
      */
-    void setHeader(String name, Iterable<String> values);
+    void setHeader(String name, Iterable<?> values);
 
     /**
      * Removes the header with the specified name.
@@ -113,36 +126,46 @@ public interface HttpMessage {
     void clearHeaders();
 
     /**
-     * Returns the length of the content.  Please note that this value is
-     * not retrieved from {@link #getContent()} but from the
-     * {@code "Content-Length"} header, and thus they are independent from each
-     * other.
-     *
-     * @return the content length or {@code 0} if this message does not have
-     *         the {@code "Content-Length"} header
+     * @deprecated Use {@link HttpHeaders#getContentLength(HttpMessage)} instead.
      */
+    @Deprecated
     long getContentLength();
 
     /**
-     * Returns the length of the content.  Please note that this value is
-     * not retrieved from {@link #getContent()} but from the
-     * {@code "Content-Length"} header, and thus they are independent from each
-     * other.
-     *
-     * @return the content length or {@code defaultValue} if this message does
-     *         not have the {@code "Content-Length"} header
+     * @deprecated Use {@link HttpHeaders#getContentLength(HttpMessage, long)} instead.
      */
+    @Deprecated
     long getContentLength(long defaultValue);
 
     /**
-     * Returns {@code true} if and only if the {@code "Transfer-Encoding"} of
-     * this message is {@code "chunked"}.
+     * Returns {@code true} if and only if this message does not have any
+     * content but the {@link HttpChunk}s, which is generated by
+     * {@link HttpMessageDecoder} consecutively, contain the actual content.
+     * <p>
+     * Please note that this method will keep returning {@code true} if the
+     * {@code "Transfer-Encoding"} of this message is {@code "chunked"}, even if
+     * you attempt to override this property by calling {@link #setChunked(boolean)}
+     * with {@code false}.
      */
     boolean isChunked();
 
     /**
-     * Returns {@code true} if and only if the connection can remain open and
-     * thus 'kept alive'.
+     * Sets if this message does not have any content but the
+     * {@link HttpChunk}s, which is generated by {@link HttpMessageDecoder}
+     * consecutively, contain the actual content.
+     * <p>
+     * If this method is called with {@code true}, the content of this message
+     * becomes {@link ChannelBuffers#EMPTY_BUFFER}.
+     * <p>
+     * Even if this method is called with {@code false}, {@link #isChunked()}
+     * will keep returning {@code true} if the {@code "Transfer-Encoding"} of
+     * this message is {@code "chunked"}.
      */
+    void setChunked(boolean chunked);
+
+    /**
+     * @deprecated Use {@link HttpHeaders#isKeepAlive(HttpMessage)} instead.
+     */
+    @Deprecated
     boolean isKeepAlive();
 }

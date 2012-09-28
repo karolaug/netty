@@ -1,95 +1,48 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.example.http.tunnel;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.concurrent.Executors;
 
 import org.jboss.netty.bootstrap.ClientBootstrap;
-import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
-import org.jboss.netty.channel.socket.http.HttpTunnelAddress;
+import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.ChannelPipelineFactory;
+import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.socket.http.HttpTunnelingClientSocketChannelFactory;
-import org.jboss.netty.channel.socket.http.HttpTunnelingServlet;
 import org.jboss.netty.channel.socket.oio.OioClientSocketChannelFactory;
-import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
+import org.jboss.netty.example.securechat.SecureChatSslContextFactory;
 import org.jboss.netty.handler.codec.string.StringDecoder;
 import org.jboss.netty.handler.codec.string.StringEncoder;
+import org.jboss.netty.handler.logging.LoggingHandler;
+import org.jboss.netty.logging.InternalLogLevel;
 
 /**
- * Make sure that the {@link LocalTransportRegister} bean is deployed along
- * with the {@link HttpTunnelingServlet} with the following <tt>web.xml</tt>.
+ * An HTTP tunneled version of the telnet client example.  Please refer to the
+ * API documentation of the <tt>org.jboss.netty.channel.socket.http</tt> package
+ * for the detailed instruction on how to deploy the server-side HTTP tunnel in
+ * your Servlet container.
  *
- * <pre>
- * &lt;?xml version="1.0" encoding="UTF-8"?&gt;
- * &lt;web-app xmlns="http://java.sun.com/xml/ns/j2ee"
- *             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
- *             xsi:schemaLocation="http://java.sun.com/xml/ns/j2ee http://java.sun.com/xml/ns/j2ee/web-app_2_4.xsd"
- *             version="2.4"&gt;
- *    &lt;!--the name of the channel, this should be a registered local channel. see LocalTransportRegister--&gt;
- *    &lt;context-param&gt;
- *       &lt;param-name&gt;serverChannelName&lt;/param-name&gt;
- *       &lt;param-value&gt;myLocalServer&lt;/param-value&gt;
- *    &lt;/context-param&gt;
- *
- *     &lt;!--Whether or not we are streaming or just polling using normal HTTP requests--&gt;
- *     &lt;context-param&gt;
- *       &lt;param-name&gt;streaming&lt;/param-name&gt;
- *       &lt;param-value&gt;true&lt;/param-value&gt;
- *    &lt;/context-param&gt;
- *
- *     &lt;!--How long to wait for a client reconnecting in milliseconds--&gt;
- *    &lt;context-param&gt;
- *       &lt;param-name&gt;reconnectTimeout&lt;/param-name&gt;
- *       &lt;param-value&gt;3000&lt;/param-value&gt;
- *    &lt;/context-param&gt;
- *
- *    &lt;listener&gt;
- *       &lt;listener-class&gt;org.jboss.netty.channel.socket.http.HttpTunnelingSessionListener&lt;/listener-class&gt;
- *    &lt;/listener&gt;
- *
- *    &lt;listener&gt;
- *       &lt;listener-class&gt;org.jboss.netty.channel.socket.http.HttpTunnelingContextListener&lt;/listener-class&gt;
- *    &lt;/listener&gt;
- *
- *    &lt;servlet&gt;
- *       &lt;servlet-name&gt;NettyTunnelingServlet&lt;/servlet-name&gt;
- *       &lt;servlet-class&gt;org.jboss.netty.channel.socket.http.HttpTunnelingServlet&lt;/servlet-class&gt;
- *    &lt;/servlet&gt;
- *
- *    &lt;servlet-mapping&gt;
- *       &lt;servlet-name&gt;NettyTunnelingServlet&lt;/servlet-name&gt;
- *       &lt;url-pattern&gt;/netty-tunnel&lt;/url-pattern&gt;
- *    &lt;/servlet-mapping&gt;
- * &lt;/web-app&gt;
- * </pre>
- * @author The Netty Project (netty-dev@lists.jboss.org)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @version $Rev: 1482 $, $Date: 2009-06-19 10:48:17 -0700 (Fri, 19 Jun 2009) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
  */
 public class HttpTunnelingClientExample {
 
@@ -107,21 +60,40 @@ public class HttpTunnelingClientExample {
         URI uri = new URI(args[0]);
         String scheme = uri.getScheme() == null? "http" : uri.getScheme();
 
-        if (!scheme.equals("http")) {
-            // We can actually support HTTPS fairly easily by inserting
-            // an SslHandler to the pipeline - left as an exercise.
-            System.err.println("Only HTTP is supported.");
+        // Configure the client.
+        ClientBootstrap b = new ClientBootstrap(
+                new HttpTunnelingClientSocketChannelFactory(
+                        new OioClientSocketChannelFactory(Executors.newCachedThreadPool())));
+
+        b.setPipelineFactory(new ChannelPipelineFactory() {
+            public ChannelPipeline getPipeline() throws Exception {
+                return Channels.pipeline(
+                        new StringDecoder(),
+                        new StringEncoder(),
+                        new LoggingHandler(InternalLogLevel.INFO));
+            }
+        });
+
+        // Set additional options required by the HTTP tunneling transport.
+        b.setOption("serverName", uri.getHost());
+        b.setOption("serverPath", uri.getRawPath());
+
+        // Configure SSL if necessary
+        if (scheme.equals("https")) {
+            b.setOption("sslContext", SecureChatSslContextFactory.getClientContext());
+        } else if (!scheme.equals("http")) {
+            // Only HTTP and HTTPS are supported.
+            System.err.println("Only HTTP(S) is supported.");
             return;
         }
-        HttpTunnelingClientSocketChannelFactory factory = new HttpTunnelingClientSocketChannelFactory(new OioClientSocketChannelFactory(Executors.newCachedThreadPool()), Executors.newCachedThreadPool());
-        ClientBootstrap bootstrap = new ClientBootstrap(factory);
-        bootstrap.getPipeline().addLast("decoder", new StringDecoder());
-        bootstrap.getPipeline().addLast("encoder", new StringEncoder());
-        bootstrap.getPipeline().addLast("handler", new PrintHandler());
-        ChannelFuture channelFuture = bootstrap.connect(new HttpTunnelAddress(uri));
+
+        // Make the connection attempt.
+        ChannelFuture channelFuture = b.connect(
+                new InetSocketAddress(uri.getHost(), uri.getPort()));
         channelFuture.awaitUninterruptibly();
-        System.out.println("Enter text (quit to end)");
+
         // Read commands from the stdin.
+        System.out.println("Enter text ('quit' to exit)");
         ChannelFuture lastWriteFuture = null;
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
         for (; ;) {
@@ -138,20 +110,12 @@ public class HttpTunnelingClientExample {
         if (lastWriteFuture != null) {
             lastWriteFuture.awaitUninterruptibly();
         }
+
         channelFuture.getChannel().close();
         // Wait until the connection is closed or the connection attempt fails.
         channelFuture.getChannel().getCloseFuture().awaitUninterruptibly();
 
-        factory.releaseExternalResources();
-    }
-
-    @ChannelPipelineCoverage("all")
-    static class PrintHandler extends OneToOneDecoder {
-        @Override
-        protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg) throws Exception {
-            String message = (String) msg;
-            System.out.println("received message back '" + message + "'");
-            return message;
-        }
+        // Shut down all threads.
+        b.releaseExternalResources();
     }
 }

@@ -1,26 +1,25 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.example.http.file;
+
+import static org.jboss.netty.handler.codec.http.HttpHeaders.*;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.*;
+import static org.jboss.netty.handler.codec.http.HttpMethod.*;
+import static org.jboss.netty.handler.codec.http.HttpResponseStatus.*;
+import static org.jboss.netty.handler.codec.http.HttpVersion.*;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -32,54 +31,49 @@ import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
+import org.jboss.netty.channel.ChannelFutureProgressListener;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
+import org.jboss.netty.channel.DefaultFileRegion;
 import org.jboss.netty.channel.ExceptionEvent;
+import org.jboss.netty.channel.FileRegion;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.jboss.netty.handler.codec.frame.TooLongFrameException;
 import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
-import org.jboss.netty.handler.codec.http.HttpHeaders;
-import org.jboss.netty.handler.codec.http.HttpMethod;
 import org.jboss.netty.handler.codec.http.HttpRequest;
 import org.jboss.netty.handler.codec.http.HttpResponse;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
-import org.jboss.netty.handler.codec.http.HttpVersion;
+import org.jboss.netty.handler.ssl.SslHandler;
 import org.jboss.netty.handler.stream.ChunkedFile;
+import org.jboss.netty.util.CharsetUtil;
 
 /**
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  */
-@ChannelPipelineCoverage("one")
 public class HttpStaticFileServerHandler extends SimpleChannelUpstreamHandler {
 
     @Override
     public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
         HttpRequest request = (HttpRequest) e.getMessage();
-        if (request.getMethod() != HttpMethod.GET) {
-            sendError(ctx, HttpResponseStatus.METHOD_NOT_ALLOWED);
+        if (request.getMethod() != GET) {
+            sendError(ctx, METHOD_NOT_ALLOWED);
             return;
         }
 
-        if (request.isChunked()) {
-            sendError(ctx, HttpResponseStatus.BAD_REQUEST);
-            return;
-        }
-
-        String path = sanitizeUri(request.getUri());
+        final String path = sanitizeUri(request.getUri());
         if (path == null) {
-            sendError(ctx, HttpResponseStatus.FORBIDDEN);
+            sendError(ctx, FORBIDDEN);
             return;
         }
 
         File file = new File(path);
         if (file.isHidden() || !file.exists()) {
-            sendError(ctx, HttpResponseStatus.NOT_FOUND);
+            sendError(ctx, NOT_FOUND);
             return;
         }
         if (!file.isFile()) {
-            sendError(ctx, HttpResponseStatus.FORBIDDEN);
+            sendError(ctx, FORBIDDEN);
             return;
         }
 
@@ -87,15 +81,13 @@ public class HttpStaticFileServerHandler extends SimpleChannelUpstreamHandler {
         try {
             raf = new RandomAccessFile(file, "r");
         } catch (FileNotFoundException fnfe) {
-            sendError(ctx, HttpResponseStatus.NOT_FOUND);
+            sendError(ctx, NOT_FOUND);
             return;
         }
         long fileLength = raf.length();
 
-        HttpResponse response = new DefaultHttpResponse(
-                HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-        response.setHeader(
-                HttpHeaders.Names.CONTENT_LENGTH, String.valueOf(fileLength));
+        HttpResponse response = new DefaultHttpResponse(HTTP_1_1, OK);
+        setContentLength(response, fileLength);
 
         Channel ch = e.getChannel();
 
@@ -103,15 +95,29 @@ public class HttpStaticFileServerHandler extends SimpleChannelUpstreamHandler {
         ch.write(response);
 
         // Write the content.
-        ChannelFuture writeFuture = ch.write(new ChunkedFile(raf, 0, fileLength, 8192));
+        ChannelFuture writeFuture;
+        if (ch.getPipeline().get(SslHandler.class) != null) {
+            // Cannot use zero-copy with HTTPS.
+            writeFuture = ch.write(new ChunkedFile(raf, 0, fileLength, 8192));
+        } else {
+            // No encryption - use zero-copy.
+            final FileRegion region =
+                new DefaultFileRegion(raf.getChannel(), 0, fileLength);
+            writeFuture = ch.write(region);
+            writeFuture.addListener(new ChannelFutureProgressListener() {
+                public void operationComplete(ChannelFuture future) {
+                    region.releaseExternalResources();
+                }
+
+                public void operationProgressed(
+                        ChannelFuture future, long amount, long current, long total) {
+                    System.out.printf("%s: %d / %d (+%d)%n", path, current, total, amount);
+                }
+            });
+        }
 
         // Decide whether to close the connection or not.
-        boolean close =
-            HttpHeaders.Values.CLOSE.equalsIgnoreCase(request.getHeader(HttpHeaders.Names.CONNECTION)) ||
-            request.getProtocolVersion().equals(HttpVersion.HTTP_1_0) &&
-            !HttpHeaders.Values.KEEP_ALIVE.equalsIgnoreCase(request.getHeader(HttpHeaders.Names.CONNECTION));
-
-        if (close) {
+        if (!isKeepAlive(request)) {
             // Close the connection when the whole content is written out.
             writeFuture.addListener(ChannelFutureListener.CLOSE);
         }
@@ -123,13 +129,13 @@ public class HttpStaticFileServerHandler extends SimpleChannelUpstreamHandler {
         Channel ch = e.getChannel();
         Throwable cause = e.getCause();
         if (cause instanceof TooLongFrameException) {
-            sendError(ctx, HttpResponseStatus.BAD_REQUEST);
+            sendError(ctx, BAD_REQUEST);
             return;
         }
 
         cause.printStackTrace();
         if (ch.isConnected()) {
-            sendError(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+            sendError(ctx, INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -161,12 +167,11 @@ public class HttpStaticFileServerHandler extends SimpleChannelUpstreamHandler {
     }
 
     private void sendError(ChannelHandlerContext ctx, HttpResponseStatus status) {
-        HttpResponse response = new DefaultHttpResponse(
-                HttpVersion.HTTP_1_1, status);
-        response.setHeader(
-                HttpHeaders.Names.CONTENT_TYPE, "text/plain; charset=UTF-8");
+        HttpResponse response = new DefaultHttpResponse(HTTP_1_1, status);
+        response.setHeader(CONTENT_TYPE, "text/plain; charset=UTF-8");
         response.setContent(ChannelBuffers.copiedBuffer(
-                "Failure: " + status.toString() + "\r\n", "UTF-8"));
+                "Failure: " + status.toString() + "\r\n",
+                CharsetUtil.UTF_8));
 
         // Close the connection as soon as the error message is sent.
         ctx.getChannel().write(response).addListener(ChannelFutureListener.CLOSE);

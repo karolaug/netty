@@ -1,24 +1,17 @@
 /*
- * JBoss, Home of Professional Open Source
+ * Copyright 2009 Red Hat, Inc.
  *
- * Copyright 2008, Red Hat Middleware LLC, and individual contributors
- * by the @author tags. See the COPYRIGHT.txt in the distribution for a
- * full listing of individual contributors.
+ * Red Hat licenses this file to you under the Apache License, version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 package org.jboss.netty.channel.group;
 
@@ -27,8 +20,8 @@ import static java.util.concurrent.TimeUnit.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -43,10 +36,10 @@ import org.jboss.netty.util.internal.IoWorkerRunnable;
 /**
  * The default {@link ChannelGroupFuture} implementation.
  *
- * @author The Netty Project (netty-dev@lists.jboss.org)
- * @author Trustin Lee (tlee@redhat.com)
+ * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
+ * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 1241 $, $Date: 2009-04-23 00:14:27 -0700 (Thu, 23 Apr 2009) $
+ * @version $Rev: 2191 $, $Date: 2010-02-19 10:18:10 +0100 (Fri, 19 Feb 2010) $
  */
 public class DefaultChannelGroupFuture implements ChannelGroupFuture {
 
@@ -55,8 +48,8 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
 
     private final ChannelGroup group;
     final Map<Integer, ChannelFuture> futures;
-    private volatile ChannelGroupFutureListener firstListener;
-    private volatile List<ChannelGroupFutureListener> otherListeners;
+    private ChannelGroupFutureListener firstListener;
+    private List<ChannelGroupFutureListener> otherListeners;
     private boolean done;
     int successCount;
     int failureCount;
@@ -96,7 +89,7 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
 
         this.group = group;
 
-        Map<Integer, ChannelFuture> futureMap = new HashMap<Integer, ChannelFuture>();
+        Map<Integer, ChannelFuture> futureMap = new LinkedHashMap<Integer, ChannelFuture>();
         for (ChannelFuture f: futures) {
             futureMap.put(f.getChannel().getId(), f);
         }
@@ -209,6 +202,10 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
     }
 
     public ChannelGroupFuture await() throws InterruptedException {
+        if (Thread.interrupted()) {
+            throw new InterruptedException();
+        }
+
         synchronized (this) {
             while (!done) {
                 checkDeadLock();
@@ -233,6 +230,7 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
     }
 
     public ChannelGroupFuture awaitUninterruptibly() {
+        boolean interrupted = false;
         synchronized (this) {
             while (!done) {
                 checkDeadLock();
@@ -240,11 +238,15 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
                 try {
                     this.wait();
                 } catch (InterruptedException e) {
-                    // Ignore.
+                    interrupted = true;
                 } finally {
                     waiters--;
                 }
             }
+        }
+
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
 
         return this;
@@ -267,39 +269,52 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
     }
 
     private boolean await0(long timeoutNanos, boolean interruptable) throws InterruptedException {
+        if (interruptable && Thread.interrupted()) {
+            throw new InterruptedException();
+        }
+
         long startTime = timeoutNanos <= 0 ? 0 : System.nanoTime();
         long waitTime = timeoutNanos;
+        boolean interrupted = false;
 
-        synchronized (this) {
-            if (done) {
-                return done;
-            } else if (waitTime <= 0) {
-                return done;
-            }
-
-            checkDeadLock();
-            waiters++;
-            try {
-                for (;;) {
-                    try {
-                        this.wait(waitTime / 1000000, (int) (waitTime % 1000000));
-                    } catch (InterruptedException e) {
-                        if (interruptable) {
-                            throw e;
-                        }
-                    }
-
-                    if (done) {
-                        return true;
-                    } else {
-                        waitTime = timeoutNanos - (System.nanoTime() - startTime);
-                        if (waitTime <= 0) {
-                            return done;
-                        }
-                    }
+        try {
+            synchronized (this) {
+                if (done) {
+                    return done;
+                } else if (waitTime <= 0) {
+                    return done;
                 }
-            } finally {
-                waiters--;
+
+                checkDeadLock();
+                waiters++;
+                try {
+                    for (;;) {
+                        try {
+                            this.wait(waitTime / 1000000, (int) (waitTime % 1000000));
+                        } catch (InterruptedException e) {
+                            if (interruptable) {
+                                throw e;
+                            } else {
+                                interrupted = true;
+                            }
+                        }
+
+                        if (done) {
+                            return true;
+                        } else {
+                            waitTime = timeoutNanos - (System.nanoTime() - startTime);
+                            if (waitTime <= 0) {
+                                return done;
+                            }
+                        }
+                    }
+                } finally {
+                    waiters--;
+                }
+            }
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
             }
         }
     }
@@ -331,9 +346,11 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
     }
 
     private void notifyListeners() {
-        // There won't be any visibility problem or concurrent modification
-        // because 'ready' flag will be checked against both addListener and
-        // removeListener calls.
+        // This method doesn't need synchronization because:
+        // 1) This method is always called after synchronized (this) block.
+        //    Hence any listener list modification happens-before this method.
+        // 2) This method is called only when 'done' is true.  Once 'done'
+        //    becomes true, the listener list is never modified - see add/removeListener()
         if (firstListener != null) {
             notifyListener(firstListener);
             firstListener = null;
