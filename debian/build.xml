@@ -66,6 +66,7 @@
                 <fileset dir="${build.testSourceDirectory}">
                     <include name="**/*Test.java"/>
                     <exclude name="**/Abstract*"/>
+                    <exclude name="**/*Socket*"/>
                     <patternset refid="test.sources.exclude"/>
                 </fileset>
             </batchtest>
