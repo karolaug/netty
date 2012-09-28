@@ -13,3 +13,11 @@ without source code (png, odg, pdf).
 [1] http://www.jboss.org/netty/downloads.html
 
  -- Thierry Carrez <thierry.carrez@ubuntu.com>  Wed, 26 Aug 2009 15:13:13 +0200
+
+Test Suite Execution
+--------------------
+
+The unit test suite has been enabled based on a) the features built from this 
+source package and b) the version of easymock currently avaliable in the archive.
+
+ -- James Page <james.page@ubuntu.com>  Tue, 24 Jan 2012 09:02:56 +0000

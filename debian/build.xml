@@ -2,8 +2,12 @@
 <project name="pkg-java" default="package" basedir="..">
 
     <property name="build.sourceDirectory" value="src/main/java"/>
+    <property name="build.testSourceDirectory" value="src/test/java"/>
     <property name="build.directory" value="build"/>
     <property name="build.outputDirectory" value="${build.directory}/classes"/>
+    <property name="build.testOutputDirectory" value="${build.directory}/test-classes"/>
+    <property name="classpath.full.test" value="${build.testOutputDirectory}:${build.outputDirectory}"/>
+    <property name="build.javaVersion" value="1.5"/>
 
     <target name="clean">
         <delete dir="${build.directory}"/>
@@ -14,11 +18,10 @@
         <javac
             destdir="${build.outputDirectory}"
             nowarn="true"
-            target="1.5"
+            source="${build.javaVersion}" target="${build.javaVersion}"
             deprecation="false"
             debug="on">
             <src path="${build.sourceDirectory}"/>
-            <exclude name="org/jboss/netty/channel/xnio/**"/>
             <exclude name="org/jboss/netty/container/**"/>
             <exclude name="org/jboss/netty/example/**"/>
             <exclude name="org/jboss/netty/logging/JBossLogger*.java"/>
@@ -26,7 +29,50 @@
         </javac>
     </target>
 
-    <target name="package" depends="compile">
+    <patternset id="test.sources.exclude">
+        <exclude name="**/ChannelBuffersTest.java"/>
+        <exclude name="**/JdkLoggerTest.java"/>
+        <exclude name="**/InternalLoggerFactoryTest.java"/>
+        <exclude name="**/Log4JLoggerTest.java"/>
+        <exclude name="org/jboss/netty/logging/JBoss*.java"/>
+        <exclude name="org/jboss/netty/handler/codec/protobuf/**"/>
+        <exclude name="**/StackTraceSimplifierTest.java"/>
+        <exclude name="org/jboss/netty/handler/ssl/**"/>
+        <exclude name="**/SwitchableInputStreamTest.java"/>
+    </patternset>
+
+    <target name="test-compile">
+        <mkdir dir="${build.testOutputDirectory}"/>
+        <javac
+            destdir="${build.testOutputDirectory}"
+            classpath="${classpath.full.test}"
+            nowarn="true"
+            source="${build.javaVersion}" target="${build.javaVersion}"
+            debug="on">
+            <src path="${build.testSourceDirectory}"/>
+            <patternset refid="test.sources.exclude"/>
+        </javac>
+    </target>
+
+    <target name="test" depends="test-compile">
+        <mkdir dir="${build.directory}/test-output"/>
+        <junit printsummary="yes" haltonfailure="yes"> 
+            <sysproperty key="basedir" value="${basedir}"/>
+            <classpath>
+                <pathelement path="${classpath.full.test}"/>
+            </classpath>
+            <formatter type="plain"/>
+            <batchtest todir="${build.directory}/test-output">
+                <fileset dir="${build.testSourceDirectory}">
+                    <include name="**/*Test.java"/>
+                    <exclude name="**/Abstract*"/>
+                    <patternset refid="test.sources.exclude"/>
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
+    <target name="package" depends="compile,test">
         <jar jarfile="${build.directory}/${artifactId}-${artifactVersion}.jar"
             basedir="${build.outputDirectory}"/>
     </target>
