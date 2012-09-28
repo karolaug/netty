@@ -29,7 +29,7 @@ import org.jboss.netty.channel.DefaultChannelConfig;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2280 $, $Date: 2010-05-19 08:29:43 +0200 (Wed, 19 May 2010) $
+ * @version $Rev: 2280 $, $Date: 2010-05-19 15:29:43 +0900 (Wed, 19 May 2010) $
  */
 class EmbeddedChannel extends AbstractChannel {
 

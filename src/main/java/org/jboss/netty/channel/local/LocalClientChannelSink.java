@@ -17,6 +17,7 @@ package org.jboss.netty.channel.local;
 
 import static org.jboss.netty.channel.Channels.*;
 
+import java.io.IOException;
 import java.net.ConnectException;
 
 import org.jboss.netty.channel.AbstractChannelSink;
@@ -35,7 +36,7 @@ import org.jboss.netty.logging.InternalLoggerFactory;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  */
 final class LocalClientChannelSink extends AbstractChannelSink {
 
@@ -95,10 +96,7 @@ final class LocalClientChannelSink extends AbstractChannelSink {
                 throw new ChannelException("address already in use: " + localAddress);
             }
 
-            if (!channel.bound.compareAndSet(false, true)) {
-                throw new ChannelException("already bound");
-            }
-
+            channel.setBound();
             channel.localAddress = localAddress;
             future.setSuccess();
             fireChannelBound(channel, localAddress);
@@ -135,12 +133,18 @@ final class LocalClientChannelSink extends AbstractChannelSink {
 
         bind(channel, succeededFuture(channel), new LocalAddress(LocalAddress.EPHEMERAL));
         channel.remoteAddress = serverChannel.getLocalAddress();
+        channel.setConnected();
         fireChannelConnected(channel, serverChannel.getLocalAddress());
 
         acceptedChannel.localAddress = serverChannel.getLocalAddress();
-        acceptedChannel.bound.set(true);
+        try {
+            acceptedChannel.setBound();
+        } catch (IOException e) {
+            throw new Error(e);
+        }
         fireChannelBound(acceptedChannel, channel.getRemoteAddress());
         acceptedChannel.remoteAddress = channel.getLocalAddress();
+        acceptedChannel.setConnected();
         fireChannelConnected(acceptedChannel, channel.getLocalAddress());
 
         // Flush something that was written in channelBound / channelConnected

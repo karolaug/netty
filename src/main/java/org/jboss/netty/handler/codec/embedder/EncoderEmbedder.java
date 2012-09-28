@@ -37,15 +37,15 @@ import org.jboss.netty.util.CharsetUtil;
  * {@link EncoderEmbedder}&lt;{@link ChannelBuffer}&gt; embedder = new {@link EncoderEmbedder}&lt;{@link ChannelBuffer}&gt;(
  *         new {@link Base64Encoder}(), new {@link StringEncoder}());
  *
- * embedded.offer(data);
+ * embedder.offer(data);
  *
- * {@link ChannelBuffer} encoded = embedded.poll();
+ * {@link ChannelBuffer} encoded = embedder.poll();
  * assert encoded.toString({@link CharsetUtil}.US_ASCII).equals("Zm9vYmFy");
  * </pre>
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2122 $, $Date: 2010-02-02 03:00:04 +0100 (Tue, 02 Feb 2010) $
+ * @version $Rev: 2122 $, $Date: 2010-02-02 11:00:04 +0900 (Tue, 02 Feb 2010) $
  *
  * @apiviz.landmark
  * @see DecoderEmbedder

@@ -40,7 +40,7 @@ import org.jboss.netty.util.internal.ThreadLocalBoolean;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2202 $, $Date: 2010-02-23 08:18:58 +0100 (Tue, 23 Feb 2010) $
+ * @version $Rev: 2202 $, $Date: 2010-02-23 16:18:58 +0900 (Tue, 23 Feb 2010) $
  *
  */
 class NioSocketChannel extends AbstractChannel
@@ -50,7 +50,7 @@ class NioSocketChannel extends AbstractChannel
     private static final int ST_BOUND = 1;
     private static final int ST_CONNECTED = 2;
     private static final int ST_CLOSED = -1;
-    private volatile int state = ST_OPEN;
+    volatile int state = ST_OPEN;
 
     final SocketChannel socket;
     final NioWorker worker;
@@ -237,7 +237,7 @@ class NioSocketChannel extends AbstractChannel
                 if (newWriteBufferSize == 0 || newWriteBufferSize < lowWaterMark) {
                     if (newWriteBufferSize + messageSize >= lowWaterMark) {
                         highWaterMarkCounter.decrementAndGet();
-                        if (!notifying.get()) {
+                        if (isConnected() && !notifying.get()) {
                             notifying.set(Boolean.TRUE);
                             fireChannelInterestChanged(NioSocketChannel.this);
                             notifying.set(Boolean.FALSE);

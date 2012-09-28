@@ -48,7 +48,7 @@ import java.nio.charset.UnsupportedCharsetException;
  * <pre>
  * {@link ChannelBuffer} buffer = ...;
  * for (int i = 0; i &lt; buffer.capacity(); i ++</strong>) {
- *     byte b = array.getByte(i);
+ *     byte b = buffer.getByte(i);
  *     System.out.println((char) b);
  * }
  * </pre>
@@ -232,7 +232,7 @@ import java.nio.charset.UnsupportedCharsetException;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2268 $, $Date: 2010-05-06 09:33:26 +0200 (Thu, 06 May 2010) $
+ * @version $Rev: 2268 $, $Date: 2010-05-06 16:33:26 +0900 (Thu, 06 May 2010) $
  *
  * @apiviz.landmark
  */

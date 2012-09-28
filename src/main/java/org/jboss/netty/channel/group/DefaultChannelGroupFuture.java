@@ -31,7 +31,7 @@ import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
-import org.jboss.netty.util.internal.IoWorkerRunnable;
+import org.jboss.netty.util.internal.DeadLockProofWorker;
 
 /**
  * The default {@link ChannelGroupFuture} implementation.
@@ -39,7 +39,7 @@ import org.jboss.netty.util.internal.IoWorkerRunnable;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2191 $, $Date: 2010-02-19 10:18:10 +0100 (Fri, 19 Feb 2010) $
+ * @version $Rev: 2191 $, $Date: 2010-02-19 18:18:10 +0900 (Fri, 19 Feb 2010) $
  */
 public class DefaultChannelGroupFuture implements ChannelGroupFuture {
 
@@ -144,15 +144,16 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
     }
 
     public synchronized boolean isPartialSuccess() {
-        return !futures.isEmpty() && successCount != 0;
+        return successCount != 0 && successCount != futures.size();
     }
 
     public synchronized boolean isPartialFailure() {
-        return !futures.isEmpty() && failureCount != 0;
+        return failureCount != 0 && failureCount != futures.size();
     }
 
     public synchronized boolean isCompleteFailure() {
-        return failureCount == futures.size();
+        int futureCnt = futures.size();
+        return futureCnt != 0 && failureCount == futureCnt;
     }
 
     public void addListener(ChannelGroupFutureListener listener) {
@@ -320,7 +321,7 @@ public class DefaultChannelGroupFuture implements ChannelGroupFuture {
     }
 
     private void checkDeadLock() {
-        if (IoWorkerRunnable.IN_IO_THREAD.get()) {
+        if (DeadLockProofWorker.PARENT.get() != null) {
             throw new IllegalStateException(
                     "await*() in I/O thread causes a dead lock or " +
                     "sudden performance drop. Use addListener() instead or " +

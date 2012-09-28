@@ -68,7 +68,7 @@ import org.jboss.netty.util.TimerTask;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2222 $, $Date: 2010-03-24 06:07:27 +0100 (Wed, 24 Mar 2010) $
+ * @version $Rev: 2222 $, $Date: 2010-03-24 14:07:27 +0900 (Wed, 24 Mar 2010) $
  *
  * @see ReadTimeoutHandler
  * @see IdleStateHandler
@@ -135,7 +135,7 @@ public class WriteTimeoutHandler extends SimpleChannelDownstreamHandler
         timer.stop();
     }
 
-    protected long getTimeoutMillis(@SuppressWarnings("unused") MessageEvent e) {
+    protected long getTimeoutMillis(MessageEvent e) {
         return timeoutMillis;
     }
 
@@ -195,7 +195,7 @@ public class WriteTimeoutHandler extends SimpleChannelDownstreamHandler
     /**
      * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
      * @author <a href="http://gleamynode.net/">Trustin Lee</a>
-     * @version $Rev: 2222 $, $Date: 2010-03-24 06:07:27 +0100 (Wed, 24 Mar 2010) $
+     * @version $Rev: 2222 $, $Date: 2010-03-24 14:07:27 +0900 (Wed, 24 Mar 2010) $
      */
     private static final class TimeoutCanceller implements ChannelFutureListener {
         private final Timeout timeout;

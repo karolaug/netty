@@ -40,7 +40,7 @@ import org.jboss.netty.channel.MessageEvent;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2355 $, $Date: 2010-08-26 07:38:34 +0200 (Thu, 26 Aug 2010) $
+ * @version $Rev: 2355 $, $Date: 2010-08-26 14:38:34 +0900 (Thu, 26 Aug 2010) $
  */
 abstract class AbstractCodecEmbedder<E> implements CodecEmbedder<E> {
 
@@ -179,6 +179,10 @@ abstract class AbstractCodecEmbedder<E> implements CodecEmbedder<E> {
 
     public final int size() {
         return productQueue.size();
+    }
+
+    public ChannelPipeline getPipeline() {
+        return pipeline;
     }
 
     private final class EmbeddedChannelSink implements ChannelSink, ChannelUpstreamHandler {

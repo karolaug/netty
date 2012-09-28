@@ -17,6 +17,8 @@ package org.jboss.netty.handler.codec.embedder;
 
 import java.util.Collection;
 
+import org.jboss.netty.channel.ChannelPipeline;
+
 /**
  * A helper that wraps an encoder or a decoder (codec) so that they can be used
  * without doing actual I/O in unit tests or higher level codecs.  Please refer
@@ -24,7 +26,7 @@ import java.util.Collection;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  */
 public interface CodecEmbedder<E> {
     /**
@@ -93,4 +95,9 @@ public interface CodecEmbedder<E> {
      * Returns the number of encoded or decoded output in the product queue.
      */
     int size();
+
+    /**
+     * Returns the {@link ChannelPipeline} that handles the input.
+     */
+    ChannelPipeline getPipeline();
 }

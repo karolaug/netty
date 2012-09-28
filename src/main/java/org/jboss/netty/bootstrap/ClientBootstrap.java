@@ -106,7 +106,7 @@ import org.jboss.netty.channel.Channels;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2337 $, $Date: 2010-07-07 06:32:10 +0200 (Wed, 07 Jul 2010) $
+ * @version $Rev: 2337 $, $Date: 2010-07-07 13:32:10 +0900 (Wed, 07 Jul 2010) $
  *
  * @apiviz.landmark
  */
@@ -182,7 +182,7 @@ public class ClientBootstrap extends Bootstrap {
      */
     public ChannelFuture connect(SocketAddress remoteAddress) {
         if (remoteAddress == null) {
-            throw new NullPointerException("remotedAddress");
+            throw new NullPointerException("remoteAddress");
         }
         SocketAddress localAddress = (SocketAddress) getOption("localAddress");
         return connect(remoteAddress, localAddress);

@@ -24,7 +24,7 @@ import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.DatagramChannel;
-import java.nio.channels.NotYetConnectedException;
+import java.nio.channels.NotYetBoundException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.util.Iterator;
@@ -56,7 +56,7 @@ import org.jboss.netty.util.internal.LinkedTransferQueue;
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  * @author Daniel Bevenius (dbevenius@jboss.com)
  *
- * @version $Rev: 2376 $, $Date: 2010-10-24 20:24:20 +0200 (Sun, 24 Oct 2010) $
+ * @version $Rev: 2376 $, $Date: 2010-10-25 03:24:20 +0900 (Mon, 25 Oct 2010) $
  */
 class NioDatagramWorker implements Runnable {
     /**
@@ -422,6 +422,7 @@ class NioDatagramWorker implements Runnable {
         }
 
         if (failure) {
+            key.cancel(); // Some JDK implementations run into an infinite loop without this.
             close(channel, succeededFuture(channel));
             return false;
         }
@@ -440,7 +441,7 @@ class NioDatagramWorker implements Runnable {
          * has a different meaning in UDP and means that the channels socket is
          * configured to only send and receive from a given remote peer.
          */
-        if (!channel.isOpen()) {
+        if (!channel.isBound()) {
             cleanUpWriteBuffer(channel);
             return;
         }
@@ -582,15 +583,21 @@ class NioDatagramWorker implements Runnable {
                 }
             }
             channel.inWriteNowLoop = false;
+
+            // Initially, the following block was executed after releasing
+            // the writeLock, but there was a race condition, and it has to be
+            // executed before releasing the writeLock:
+            //
+            //     https://issues.jboss.org/browse/NETTY-410
+            //
+            if (addOpWrite) {
+                setOpWrite(channel);
+            } else if (removeOpWrite) {
+                clearOpWrite(channel);
+            }
         }
 
         fireWriteComplete(channel, writtenBytes);
-
-        if (addOpWrite) {
-            setOpWrite(channel);
-        } else if (removeOpWrite) {
-            clearOpWrite(channel);
-        }
     }
 
     private void setOpWrite(final NioDatagramChannel channel) {
@@ -692,7 +699,7 @@ class NioDatagramWorker implements Runnable {
                 // Create the exception only once to avoid the excessive overhead
                 // caused by fillStackTrace.
                 if (channel.isOpen()) {
-                    cause = new NotYetConnectedException();
+                    cause = new NotYetBoundException();
                 } else {
                     cause = new ClosedChannelException();
                 }
@@ -712,7 +719,7 @@ class NioDatagramWorker implements Runnable {
                 // caused by fillStackTrace.
                 if (cause == null) {
                     if (channel.isOpen()) {
-                        cause = new NotYetConnectedException();
+                        cause = new NotYetBoundException();
                     } else {
                         cause = new ClosedChannelException();
                     }

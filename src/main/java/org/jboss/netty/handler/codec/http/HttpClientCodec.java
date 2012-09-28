@@ -36,7 +36,7 @@ import org.jboss.netty.util.internal.LinkedTransferQueue;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2368 $, $Date: 2010-10-18 10:19:03 +0200 (Mon, 18 Oct 2010) $
+ * @version $Rev: 2368 $, $Date: 2010-10-18 17:19:03 +0900 (Mon, 18 Oct 2010) $
  *
  * @see HttpServerCodec
  *
@@ -134,11 +134,20 @@ public class HttpClientCodec implements ChannelUpstreamHandler,
                 // message-body, even though the presence of entity-header fields
                 // might lead one to believe they do.
                 if (HttpMethod.HEAD.equals(method)) {
-                    // Interesting edge case:
-                    // Zero-byte chunk will appear if Transfer-Encoding of the
-                    // response is 'chunked'.  This is probably because of the
-                    // trailing headers.
-                    return !msg.isChunked();
+                    return true;
+
+                    // The following code was inserted to work around the servers
+                    // that behave incorrectly.  It has been commented out
+                    // because it does not work with well behaving servers.
+                    // Please note, even if the 'Transfer-Encoding: chunked'
+                    // header exists in the HEAD response, the response should
+                    // have absolutely no content.
+                    //
+                    //// Interesting edge case:
+                    //// Some poorly implemented servers will send a zero-byte
+                    //// chunk if Transfer-Encoding of the response is 'chunked'.
+                    ////
+                    //// return !msg.isChunked();
                 }
                 break;
             case 'C':

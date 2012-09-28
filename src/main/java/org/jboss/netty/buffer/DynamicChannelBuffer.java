@@ -32,7 +32,7 @@ import java.nio.channels.ScatteringByteChannel;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2206 $, $Date: 2010-03-03 06:35:01 +0100 (Wed, 03 Mar 2010) $
+ * @version $Rev: 2206M $, $Date: 2010-11-09 15:04:10 +0900 (Tue, 09 Nov 2010) $
  *
  */
 public class DynamicChannelBuffer extends AbstractChannelBuffer {

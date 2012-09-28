@@ -17,6 +17,7 @@ package org.jboss.netty.channel;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -203,7 +204,7 @@ import org.jboss.netty.handler.ssl.SslHandler;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2153 $, $Date: 2010-02-17 09:24:25 +0100 (Wed, 17 Feb 2010) $
+ * @version $Rev: 2153 $, $Date: 2010-02-17 17:24:25 +0900 (Wed, 17 Feb 2010) $
  *
  * @apiviz.landmark
  * @apiviz.composedOf org.jboss.netty.channel.ChannelHandlerContext
@@ -487,6 +488,11 @@ public interface ChannelPipeline {
      * a {@link Channel}.
      */
     boolean isAttached();
+
+    /**
+     * Returns the {@link List} of the handler names.
+     */
+    List<String> getNames();
 
     /**
      * Converts this pipeline into an ordered {@link Map} whose keys are

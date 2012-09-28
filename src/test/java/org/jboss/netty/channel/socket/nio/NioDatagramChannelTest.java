@@ -33,7 +33,7 @@ import org.junit.Test;
 /**
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Daniel Bevenius (dbevenius@jboss.com)
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  */
 public class NioDatagramChannelTest {
     private static Channel sc;
@@ -112,7 +112,7 @@ public class NioDatagramChannelTest {
         assertFalse("The payload should have been cleared", expectedPayload
                 .equals(new String(dp.getData())));
 
-        udpClient.receive(dp);
+        udpClient.receive(dp, 4000);
 
         assertEquals(expectedPayload, new String(dp.getData()));
         udpClient.close();

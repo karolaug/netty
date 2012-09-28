@@ -40,7 +40,7 @@ import org.jboss.netty.util.internal.SystemPropertyUtil;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2162 $, $Date: 2010-02-18 03:23:51 +0100 (Thu, 18 Feb 2010) $
+ * @version $Rev: 2162 $, $Date: 2010-02-18 11:23:51 +0900 (Thu, 18 Feb 2010) $
  *
  */
 class NioProviderMetadata {

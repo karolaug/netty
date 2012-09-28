@@ -39,7 +39,7 @@ import java.util.Map;
  * @author Andy Taylor (andy.taylor@jboss.org)
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  * @author <a href="http://tsunanet.net/">Benoit Sigoure</a>
- * @version $Rev: 2302 $, $Date: 2010-06-14 13:07:44 +0200 (Mon, 14 Jun 2010) $
+ * @version $Rev: 2302 $, $Date: 2010-06-14 20:07:44 +0900 (Mon, 14 Jun 2010) $
  *
  * @see QueryStringEncoder
  *

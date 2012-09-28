@@ -29,14 +29,14 @@ import org.jboss.netty.channel.ChannelState;
 import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.util.ThreadRenamingRunnable;
-import org.jboss.netty.util.internal.IoWorkerRunnable;
+import org.jboss.netty.util.internal.DeadLockProofWorker;
 
 /**
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2341 $, $Date: 2010-07-07 06:44:23 +0200 (Wed, 07 Jul 2010) $
+ * @version $Rev: 2341 $, $Date: 2010-07-07 13:44:23 +0900 (Wed, 07 Jul 2010) $
  *
  */
 class OioDatagramPipelineSink extends AbstractChannelSink {
@@ -100,11 +100,11 @@ class OioDatagramPipelineSink extends AbstractChannelSink {
             fireChannelBound(channel, channel.getLocalAddress());
 
             // Start the business.
-            workerExecutor.execute(
-                    new IoWorkerRunnable(
-                            new ThreadRenamingRunnable(
-                                    new OioDatagramWorker(channel),
-                                    "Old I/O datagram worker (" + channel + ')')));
+            DeadLockProofWorker.start(
+                    workerExecutor,
+                    new ThreadRenamingRunnable(
+                            new OioDatagramWorker(channel),
+                            "Old I/O datagram worker (" + channel + ')'));
             workerStarted = true;
         } catch (Throwable t) {
             future.setFailure(t);
@@ -144,10 +144,10 @@ class OioDatagramPipelineSink extends AbstractChannelSink {
             String threadName = "Old I/O datagram worker (" + channel + ')';
             if (!bound) {
                 // Start the business.
-                workerExecutor.execute(
-                        new IoWorkerRunnable(
-                                new ThreadRenamingRunnable(
-                                        new OioDatagramWorker(channel), threadName)));
+                DeadLockProofWorker.start(
+                        workerExecutor,
+                        new ThreadRenamingRunnable(
+                                new OioDatagramWorker(channel), threadName));
             } else {
                 // Worker started by bind() - just rename.
                 Thread workerThread = channel.workerThread;

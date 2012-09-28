@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
-import org.jboss.netty.util.internal.IoWorkerRunnable;
+import org.jboss.netty.util.internal.DeadLockProofWorker;
 
 /**
  * The default {@link ChannelFuture} implementation.  It is recommended to
@@ -35,7 +35,7 @@ import org.jboss.netty.util.internal.IoWorkerRunnable;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2201 $, $Date: 2010-02-23 06:45:53 +0100 (Tue, 23 Feb 2010) $
+ * @version $Rev: 2201 $, $Date: 2010-02-23 14:45:53 +0900 (Tue, 23 Feb 2010) $
  */
 public class DefaultChannelFuture implements ChannelFuture {
 
@@ -292,7 +292,7 @@ public class DefaultChannelFuture implements ChannelFuture {
     }
 
     private void checkDeadLock() {
-        if (isUseDeadLockChecker() && IoWorkerRunnable.IN_IO_THREAD.get()) {
+        if (isUseDeadLockChecker() && DeadLockProofWorker.PARENT.get() != null) {
             throw new IllegalStateException(
                     "await*() in I/O thread causes a dead lock or " +
                     "sudden performance drop. Use addListener() instead or " +

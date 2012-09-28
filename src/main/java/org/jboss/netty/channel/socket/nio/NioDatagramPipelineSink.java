@@ -39,7 +39,7 @@ import org.jboss.netty.channel.MessageEvent;
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  * @author Daniel Bevenius (dbevenius@jboss.com)
  *
- * @version $Rev: 2340 $, $Date: 2010-07-07 06:37:10 +0200 (Wed, 07 Jul 2010) $
+ * @version $Rev: 2340 $, $Date: 2010-07-07 13:37:10 +0900 (Wed, 07 Jul 2010) $
  */
 class NioDatagramPipelineSink extends AbstractChannelSink {
 

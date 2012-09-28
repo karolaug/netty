@@ -25,7 +25,7 @@ import java.net.SocketException;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Daniel Bevenius (dbevenius@jboss.com)
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  */
 public class UdpClient {
 
@@ -48,7 +48,8 @@ public class UdpClient {
         return dp;
     }
 
-    public void receive(final DatagramPacket dp) throws IOException {
+    public void receive(final DatagramPacket dp, final int timeout) throws IOException {
+        clientSocket.setSoTimeout(timeout);
         clientSocket.receive(dp);
     }
 

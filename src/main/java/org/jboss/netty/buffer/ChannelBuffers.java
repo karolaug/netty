@@ -85,7 +85,7 @@ import org.jboss.netty.util.CharsetUtil;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2269 $, $Date: 2010-05-06 09:37:27 +0200 (Thu, 06 May 2010) $
+ * @version $Rev: 2269 $, $Date: 2010-05-06 16:37:27 +0900 (Thu, 06 May 2010) $
  *
  * @apiviz.landmark
  * @apiviz.has org.jboss.netty.buffer.ChannelBuffer oneway - - creates
@@ -313,7 +313,7 @@ public class ChannelBuffers {
             return EMPTY_BUFFER;
         }
         if (buffer.hasArray()) {
-            return wrappedBuffer(buffer.order(), buffer.array(), buffer.arrayOffset(),buffer.remaining());
+            return wrappedBuffer(buffer.order(), buffer.array(), buffer.arrayOffset() + buffer.position(),buffer.remaining());
         } else {
             return new ByteBufferBackedChannelBuffer(buffer);
         }
@@ -995,8 +995,8 @@ public class ChannelBuffers {
         }
 
         for (int i = byteCount; i > 0; i --) {
-            byte va = bufferA.getByte(aIndex);
-            byte vb = bufferB.getByte(bIndex);
+            short va = bufferA.getUnsignedByte(aIndex);
+            short vb = bufferB.getUnsignedByte(bIndex);
             if (va > vb) {
                 return 1;
             } else if (va < vb) {

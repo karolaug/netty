@@ -47,7 +47,7 @@ import org.jboss.netty.channel.socket.nio.SocketSendBufferPool.SendBuffer;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
 import org.jboss.netty.util.ThreadRenamingRunnable;
-import org.jboss.netty.util.internal.IoWorkerRunnable;
+import org.jboss.netty.util.internal.DeadLockProofWorker;
 import org.jboss.netty.util.internal.LinkedTransferQueue;
 
 /**
@@ -55,7 +55,7 @@ import org.jboss.netty.util.internal.LinkedTransferQueue;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2376 $, $Date: 2010-10-24 20:24:20 +0200 (Sun, 24 Oct 2010) $
+ * @version $Rev: 2376 $, $Date: 2010-10-25 03:24:20 +0900 (Mon, 25 Oct 2010) $
  *
  */
 class NioWorker implements Runnable {
@@ -82,7 +82,7 @@ class NioWorker implements Runnable {
 
     private final SocketReceiveBufferPool recvBufferPool = new SocketReceiveBufferPool();
     private final SocketSendBufferPool sendBufferPool = new SocketSendBufferPool();
-
+    
     NioWorker(int bossId, int id, Executor executor) {
         this.bossId = bossId;
         this.id = id;
@@ -96,6 +96,7 @@ class NioWorker implements Runnable {
         Selector selector;
 
         synchronized (startStopLock) {
+            
             if (!started) {
                 // Open a selector if this worker didn't start yet.
                 try {
@@ -112,9 +113,8 @@ class NioWorker implements Runnable {
 
                 boolean success = false;
                 try {
-                    executor.execute(
-                            new IoWorkerRunnable(
-                                    new ThreadRenamingRunnable(this, threadName)));
+                    DeadLockProofWorker.start(
+                            executor, new ThreadRenamingRunnable(this, threadName));
                     success = true;
                 } finally {
                     if (!success) {
@@ -161,6 +161,7 @@ class NioWorker implements Runnable {
             }
 
             try {
+
                 SelectorUtil.select(selector);
 
                 // 'wakenUp.compareAndSet(false, true)' is always evaluated
@@ -353,6 +354,7 @@ class NioWorker implements Runnable {
         }
 
         if (ret < 0 || failure) {
+            k.cancel(); // Some JDK implementations run into an infinite loop without this.
             close(channel, succeededFuture(channel));
             return false;
         }
@@ -515,17 +517,23 @@ class NioWorker implements Runnable {
                 }
             }
             channel.inWriteNowLoop = false;
+
+            // Initially, the following block was executed after releasing
+            // the writeLock, but there was a race condition, and it has to be
+            // executed before releasing the writeLock:
+            //
+            //     https://issues.jboss.org/browse/NETTY-410
+            //
+            if (open) {
+                if (addOpWrite) {
+                    setOpWrite(channel);
+                } else if (removeOpWrite) {
+                    clearOpWrite(channel);
+                }
+            }
         }
 
         fireWriteComplete(channel, writtenBytes);
-
-        if (open) {
-            if (addOpWrite) {
-                setOpWrite(channel);
-            } else if (removeOpWrite) {
-                clearOpWrite(channel);
-            }
-        }
     }
 
     private void setOpWrite(NioSocketChannel channel) {
@@ -778,12 +786,10 @@ class NioWorker implements Runnable {
                 }
             }
 
-            if (!server) {
-                if (!((NioClientSocketChannel) channel).boundManually) {
-                    fireChannelBound(channel, localAddress);
-                }
-                fireChannelConnected(channel, remoteAddress);
+            if (server || !((NioClientSocketChannel) channel).boundManually) {
+                fireChannelBound(channel, localAddress);
             }
+            fireChannelConnected(channel, remoteAddress);
         }
     }
 }

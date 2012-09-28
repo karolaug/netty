@@ -29,7 +29,7 @@ import org.jboss.netty.util.internal.jzlib.ZStream;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2241 $, $Date: 2010-04-16 06:12:43 +0200 (Fri, 16 Apr 2010) $
+ * @version $Rev: 2241 $, $Date: 2010-04-16 13:12:43 +0900 (Fri, 16 Apr 2010) $
  *
  * @apiviz.landmark
  * @apiviz.has org.jboss.netty.handler.codec.compression.ZlibWrapper
@@ -125,25 +125,32 @@ public class ZlibDecoder extends OneToOneDecoder {
                 z.next_out_index = 0;
                 z.avail_out = out.length;
 
-                do {
+
+                loop: for (;;) {
                     // Decompress 'in' into 'out'
                     int resultCode = z.inflate(JZlib.Z_SYNC_FLUSH);
+                    if (z.next_out_index > 0) {
+                        decompressed.writeBytes(out, 0, z.next_out_index);
+                        z.avail_out = out.length;
+                    }
+                    z.next_out_index = 0;
+
                     switch (resultCode) {
                     case JZlib.Z_STREAM_END:
+                        finished = true; // Do not decode anymore.
+                        z.inflateEnd();
+                        break loop;
                     case JZlib.Z_OK:
+                        break;
                     case JZlib.Z_BUF_ERROR:
-                        decompressed.writeBytes(out, 0, z.next_out_index);
-                        z.next_out_index = 0;
-                        z.avail_out = out.length;
-                        if (resultCode == JZlib.Z_STREAM_END) {
-                            finished = true; // Do not decode anymore.
-                            z.inflateEnd();
+                        if (z.avail_in <= 0) {
+                            break loop;
                         }
                         break;
                     default:
                         ZlibUtil.fail(z, "decompression failure", resultCode);
                     }
-                } while (z.avail_in > 0);
+                }
 
                 if (decompressed.writerIndex() != 0) { // readerIndex is always 0
                     return decompressed;

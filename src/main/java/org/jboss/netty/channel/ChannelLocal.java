@@ -31,7 +31,7 @@ import org.jboss.netty.util.internal.ConcurrentIdentityWeakKeyHashMap;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  *
  * @apiviz.stereotype utility
  */
@@ -51,7 +51,7 @@ public class ChannelLocal<T> {
      * Returns the initial value of the variable.  By default, it returns
      * {@code null}.  Override it to change the initial value.
      */
-    protected T initialValue(@SuppressWarnings("unused") Channel channel) {
+    protected T initialValue(Channel channel) {
         return null;
     }
 
@@ -110,14 +110,23 @@ public class ChannelLocal<T> {
     }
 
     /**
-     * Removes the variable.
+     * Removes the variable and returns the removed value.  If no value was set,
+     * this method returns the return value of {@link #initialValue(Channel)},
+     * which is {@code null} by default.
      *
-     * @return the removed value. {@code null} if no value was set.
+     * @return the removed value.
+     *         {@linkplain #initialValue(Channel) an initial value} (by default
+     *         {@code null}) if no value was set.
      */
     public T remove(Channel channel) {
         if (channel == null) {
             throw new NullPointerException("channel");
         }
-        return map.remove(channel);
+        T removed = map.remove(channel);
+        if (removed == null) {
+            return initialValue(channel);
+        } else {
+            return removed;
+        }
     }
 }

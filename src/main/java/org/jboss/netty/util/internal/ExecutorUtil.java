@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  */
 public class ExecutorUtil {
 
@@ -50,6 +50,11 @@ public class ExecutorUtil {
      * Shuts down the specified executors.
      */
     public static void terminate(Executor... executors) {
+        // Check nulls.
+        if (executors == null) {
+            throw new NullPointerException("executors");
+        }
+
         Executor[] executorsCopy = new Executor[executors.length];
         for (int i = 0; i < executors.length; i ++) {
             if (executors[i] == null) {
@@ -58,6 +63,21 @@ public class ExecutorUtil {
             executorsCopy[i] = executors[i];
         }
 
+        // Check dead lock.
+        final Executor currentParent = DeadLockProofWorker.PARENT.get();
+        if (currentParent != null) {
+            for (Executor e: executorsCopy) {
+                if (e == currentParent) {
+                    throw new IllegalStateException(
+                            "An Executor cannot be shut down from the thread " +
+                            "acquired from itself.  Please make sure you are " +
+                            "not calling releaseExternalResources() from an " +
+                            "I/O worker thread.");
+                }
+            }
+        }
+
+        // Shut down all executors.
         boolean interrupted = false;
         for (Executor e: executorsCopy) {
             if (!(e instanceof ExecutorService)) {

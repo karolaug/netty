@@ -30,7 +30,7 @@ import org.jboss.netty.channel.ChannelHandler.Sharable;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2124 $, $Date: 2010-02-02 03:13:06 +0100 (Tue, 02 Feb 2010) $
+ * @version $Rev: 2124 $, $Date: 2010-02-02 11:13:06 +0900 (Tue, 02 Feb 2010) $
  *
  * @apiviz.exclude
  */

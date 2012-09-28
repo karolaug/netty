@@ -3,20 +3,28 @@ Section: java
 Priority: optional
 Maintainer: Chris Grzegorczyk <grze@eucalyptus.com>
 DM-Upload-Allowed: yes
-Uploaders: Graziano Obertelli <graziano@eucalyptus.com>, Kyo Lee <kyo.lee@eucalyptus.com>
-XSBC-Original-Maintainer: Thierry Carrez <thierry.carrez@ubuntu.com>
+Uploaders: Graziano Obertelli <graziano@eucalyptus.com>,
+           Kyo Lee <kyo.lee@eucalyptus.com>,
+           Damien Raude-Morvan <drazzib@debian.org>
 Build-Depends-Indep: default-jdk,
-  libcommons-logging-java,
-  liblog4j1.2-java,
-  libslf4j-java,
-  libservlet2.5-java,
-  libprotobuf-java
-Build-Depends: ant, debhelper (>= 5), cdbs (>= 0.4.5.3)
-Standards-Version: 3.8.3
+                     junit4,
+                     libcommons-logging-java,
+                     libeasymock-java,
+                     liblog4j1.2-java,
+                     libservlet2.5-java,
+                     libslf4j-java,
+                     maven-repo-helper
+Build-Depends: ant, ant-optional, cdbs (>= 0.4.5.3), debhelper (>= 7)
+Standards-Version: 3.9.2
+Homepage: http://www.jboss.org/netty
+Vcs-Svn: svn://svn.debian.org/svn/pkg-eucalyptus/netty/trunk/
+Vcs-Browser: http://anonscm.debian.org/viewvc/pkg-eucalyptus/netty/trunk/
 
 Package: libnetty-java
 Architecture: all
-Depends: default-jre-headless | java5-runtime-headless, ${misc:Depends}
+Depends: ${misc:Depends}
+Recommends: libcommons-logging-java | liblog4j1.2-java | libslf4j-java,
+            libservlet2.5-java
 Description: Java NIO client/server socket framework
  Netty is a Java NIO client/server framework which enables quick and easy
  development of network applications such as protocol servers and clients.

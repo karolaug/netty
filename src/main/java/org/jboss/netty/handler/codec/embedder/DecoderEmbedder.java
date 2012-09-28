@@ -37,15 +37,15 @@ import org.jboss.netty.handler.codec.string.StringDecoder;
  * {@link DecoderEmbedder}&lt;String&gt; embedder = new {@link DecoderEmbedder}&lt;String&gt;(
  *         new {@link Base64Decoder}(), new {@link StringDecoder}());
  *
- * embedded.offer(base64Data);
+ * embedder.offer(base64Data);
  *
- * String decoded = embedded.poll();
+ * String decoded = embedder.poll();
  * assert decoded.equals("foobar");
  * </pre>
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2122 $, $Date: 2010-02-02 03:00:04 +0100 (Tue, 02 Feb 2010) $
+ * @version $Rev: 2122 $, $Date: 2010-02-02 11:00:04 +0900 (Tue, 02 Feb 2010) $
  *
  * @apiviz.landmark
  * @see EncoderEmbedder

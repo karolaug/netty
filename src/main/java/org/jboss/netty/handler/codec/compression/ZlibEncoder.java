@@ -37,7 +37,7 @@ import org.jboss.netty.util.internal.jzlib.ZStream;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
- * @version $Rev: 2241 $, $Date: 2010-04-16 06:12:43 +0200 (Fri, 16 Apr 2010) $
+ * @version $Rev: 2241 $, $Date: 2010-04-16 13:12:43 +0900 (Fri, 16 Apr 2010) $
  *
  * @apiviz.landmark
  * @apiviz.has org.jboss.netty.handler.codec.compression.ZlibWrapper
@@ -103,6 +103,11 @@ public class ZlibEncoder extends OneToOneEncoder implements LifeCycleAwareChanne
         }
         if (wrapper == null) {
             throw new NullPointerException("wrapper");
+        }
+        if (wrapper == ZlibWrapper.ZLIB_OR_NONE) {
+            throw new IllegalArgumentException(
+                    "wrapper '" + ZlibWrapper.ZLIB_OR_NONE + "' is not " +
+                    "allowed for compression.");
         }
 
         synchronized (z) {

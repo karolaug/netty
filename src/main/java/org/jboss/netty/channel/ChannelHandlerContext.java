@@ -51,7 +51,7 @@ package org.jboss.netty.channel;
  *     public void login(String username, password) {
  *         {@link Channels}.write(
  *                 <b>this.ctx</b>,
- *                 {@link Channels}.succeededFuture(<b>this.ctx</t>.getChannel()),
+ *                 {@link Channels}.succeededFuture(<b>this.ctx</t>.getChannel()</b>),
  *                 new LoginMessage(username, password));
  *     }
  *     ...
@@ -120,7 +120,7 @@ package org.jboss.netty.channel;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2157 $, $Date: 2010-02-17 09:37:38 +0100 (Wed, 17 Feb 2010) $
+ * @version $Rev: 2157 $, $Date: 2010-02-17 17:37:38 +0900 (Wed, 17 Feb 2010) $
  *
  * @apiviz.owns org.jboss.netty.channel.ChannelHandler
  */

@@ -36,12 +36,12 @@ import javax.net.ssl.SSLEngine;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  */
 public class SslBufferPool {
 
-    // Add 1024 as a room for compressed data.
-    private static final int MAX_PACKET_SIZE = 16665 + 1024;
+    // Add 1024 as a room for compressed data and another 1024 for Apache Harmony compatibility.
+    private static final int MAX_PACKET_SIZE = 16665 + 2048;
     private static final int DEFAULT_POOL_SIZE = MAX_PACKET_SIZE * 1024;
 
     private final ByteBuffer[] pool;

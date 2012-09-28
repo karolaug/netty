@@ -55,21 +55,21 @@ import org.jboss.netty.channel.socket.SocketChannelConfig;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  */
 public interface NioSocketChannelConfig extends SocketChannelConfig {
 
     /**
      * Returns the high water mark of the write buffer.  If the number of bytes
      * queued in the write buffer exceeds this value, {@link Channel#isWritable()}
-     * will start to return {@code true}.
+     * will start to return {@code false}.
      */
     int getWriteBufferHighWaterMark();
 
     /**
      * Sets the high water mark of the write buffer.  If the number of bytes
      * queued in the write buffer exceeds this value, {@link Channel#isWritable()}
-     * will start to return {@code true}.
+     * will start to return {@code false}.
      */
     void setWriteBufferHighWaterMark(int writeBufferHighWaterMark);
 
@@ -78,7 +78,7 @@ public interface NioSocketChannelConfig extends SocketChannelConfig {
      * queued in the write buffer exceeded the
      * {@linkplain #setWriteBufferHighWaterMark(int) high water mark} and then
      * dropped down below this value, {@link Channel#isWritable()} will return
-     * {@code false} again.
+     * {@code true} again.
      */
     int getWriteBufferLowWaterMark();
 
@@ -87,7 +87,7 @@ public interface NioSocketChannelConfig extends SocketChannelConfig {
      * queued in the write buffer exceeded the
      * {@linkplain #setWriteBufferHighWaterMark(int) high water mark} and then
      * dropped down below this value, {@link Channel#isWritable()} will return
-     * {@code false} again.
+     * {@code true} again.
      */
     void setWriteBufferLowWaterMark(int writeBufferLowWaterMark);
 

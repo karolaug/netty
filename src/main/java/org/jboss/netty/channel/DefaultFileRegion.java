@@ -14,11 +14,17 @@ public class DefaultFileRegion implements FileRegion {
     private final FileChannel file;
     private final long position;
     private final long count;
+    private final boolean releaseAfterTransfer;
 
     public DefaultFileRegion(FileChannel file, long position, long count) {
+        this(file, position, count, false);
+    }
+
+    public DefaultFileRegion(FileChannel file, long position, long count, boolean releaseAfterTransfer) {
         this.file = file;
         this.position = position;
         this.count = count;
+        this.releaseAfterTransfer = releaseAfterTransfer;
     }
 
     public long getPosition() {
@@ -27,6 +33,10 @@ public class DefaultFileRegion implements FileRegion {
 
     public long getCount() {
         return count;
+    }
+
+    public boolean releaseAfterTransfer() {
+        return releaseAfterTransfer;
     }
 
     public long transferTo(WritableByteChannel target, long position) throws IOException {

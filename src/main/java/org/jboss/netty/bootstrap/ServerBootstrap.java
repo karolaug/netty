@@ -156,7 +156,7 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2344 $, $Date: 2010-07-07 09:55:37 +0200 (Wed, 07 Jul 2010) $
+ * @version $Rev: 2344 $, $Date: 2010-07-07 16:55:37 +0900 (Wed, 07 Jul 2010) $
  *
  * @apiviz.landmark
  */

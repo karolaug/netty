@@ -34,7 +34,7 @@ import org.junit.Test;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  *
  */
 public class ChannelBuffersTest {
@@ -198,6 +198,19 @@ public class ChannelBuffersTest {
         assertSame(EMPTY_BUFFER, copiedBuffer(new ChannelBuffer[0]));
         assertSame(EMPTY_BUFFER, copiedBuffer(new ChannelBuffer[] { buffer(0) }));
         assertSame(EMPTY_BUFFER, copiedBuffer(new ChannelBuffer[] { buffer(0), buffer(0) }));
+    }
+
+    @Test
+    public void testCompare2() {
+        assertTrue(ChannelBuffers.compare(
+                ChannelBuffers.wrappedBuffer(new byte[]{(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF}),
+                ChannelBuffers.wrappedBuffer(new byte[]{(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00}))
+                > 0);
+
+        assertTrue(ChannelBuffers.compare(
+                ChannelBuffers.wrappedBuffer(new byte[]{(byte) 0xFF}),
+                ChannelBuffers.wrappedBuffer(new byte[]{(byte) 0x00}))
+                > 0);
     }
 
     @Test(expected = NullPointerException.class)

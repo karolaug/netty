@@ -33,7 +33,7 @@ import org.jboss.netty.channel.ReceiveBufferSizePredictor;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2341 $, $Date: 2010-07-07 06:44:23 +0200 (Wed, 07 Jul 2010) $
+ * @version $Rev: 2341 $, $Date: 2010-07-07 13:44:23 +0900 (Wed, 07 Jul 2010) $
  *
  */
 class OioDatagramWorker implements Runnable {
@@ -100,13 +100,14 @@ class OioDatagramWorker implements Runnable {
             Object message, SocketAddress remoteAddress) {
         try {
             ChannelBuffer buf = (ChannelBuffer) message;
+            int offset = buf.readerIndex();
             int length = buf.readableBytes();
             ByteBuffer nioBuf = buf.toByteBuffer();
             DatagramPacket packet;
             if (nioBuf.hasArray()) {
                 // Avoid copy if the buffer is backed by an array.
                 packet = new DatagramPacket(
-                        nioBuf.array(), nioBuf.arrayOffset(), length);
+                        nioBuf.array(), nioBuf.arrayOffset() + offset, length);
             } else {
                 // Otherwise it will be expensive.
                 byte[] arrayBuf = new byte[length];

@@ -43,7 +43,7 @@ import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
 import org.jboss.netty.util.ThreadRenamingRunnable;
-import org.jboss.netty.util.internal.IoWorkerRunnable;
+import org.jboss.netty.util.internal.DeadLockProofWorker;
 import org.jboss.netty.util.internal.LinkedTransferQueue;
 
 /**
@@ -51,7 +51,7 @@ import org.jboss.netty.util.internal.LinkedTransferQueue;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2144 $, $Date: 2010-02-09 04:41:12 +0100 (Tue, 09 Feb 2010) $
+ * @version $Rev: 2144 $, $Date: 2010-02-09 12:41:12 +0900 (Tue, 09 Feb 2010) $
  *
  */
 class NioClientSocketPipelineSink extends AbstractChannelSink {
@@ -194,10 +194,10 @@ class NioClientSocketPipelineSink extends AbstractChannelSink {
                     // Start the worker thread with the new Selector.
                     boolean success = false;
                     try {
-                        bossExecutor.execute(
-                                new IoWorkerRunnable(
-                                        new ThreadRenamingRunnable(
-                                                this, "New I/O client boss #" + id)));
+                        DeadLockProofWorker.start(
+                                bossExecutor,
+                                new ThreadRenamingRunnable(
+                                        this, "New I/O client boss #" + id));
                         success = true;
                     } finally {
                         if (!success) {
@@ -388,6 +388,7 @@ class NioClientSocketPipelineSink extends AbstractChannelSink {
             } catch (Throwable t) {
                 ch.connectFuture.setFailure(t);
                 fireExceptionCaught(ch, t);
+                k.cancel(); // Some JDK implementations run into an infinite loop without this.
                 ch.worker.close(ch, succeededFuture(ch));
             }
         }

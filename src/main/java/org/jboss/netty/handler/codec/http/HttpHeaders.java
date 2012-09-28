@@ -28,7 +28,7 @@ import java.util.TreeSet;
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author Andy Taylor (andy.taylor@jboss.org)
- * @version $Rev: 2370 $, $Date: 2010-10-19 07:40:44 +0200 (Tue, 19 Oct 2010) $
+ * @version $Rev: 2370 $, $Date: 2010-10-19 14:40:44 +0900 (Tue, 19 Oct 2010) $
  *
  * @apiviz.landmark
  * @apiviz.stereotype static
@@ -40,7 +40,7 @@ public class HttpHeaders {
      *
      * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
      * @author Andy Taylor (andy.taylor@jboss.org)
-     * @version $Rev: 2370 $, $Date: 2010-10-19 07:40:44 +0200 (Tue, 19 Oct 2010) $
+     * @version $Rev: 2370 $, $Date: 2010-10-19 14:40:44 +0900 (Tue, 19 Oct 2010) $
      *
      * @apiviz.stereotype static
      */
@@ -304,7 +304,7 @@ public class HttpHeaders {
      *
      * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
      * @author Andy Taylor (andy.taylor@jboss.org)
-     * @version $Rev: 2370 $, $Date: 2010-10-19 07:40:44 +0200 (Tue, 19 Oct 2010) $
+     * @version $Rev: 2370 $, $Date: 2010-10-19 14:40:44 +0900 (Tue, 19 Oct 2010) $
      *
      * @apiviz.stereotype static
      */

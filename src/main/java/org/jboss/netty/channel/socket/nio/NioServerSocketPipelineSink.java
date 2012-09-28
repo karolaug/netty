@@ -40,14 +40,14 @@ import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.logging.InternalLogger;
 import org.jboss.netty.logging.InternalLoggerFactory;
 import org.jboss.netty.util.ThreadRenamingRunnable;
-import org.jboss.netty.util.internal.IoWorkerRunnable;
+import org.jboss.netty.util.internal.DeadLockProofWorker;
 
 /**
  *
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2352 $, $Date: 2010-08-26 05:13:14 +0200 (Thu, 26 Aug 2010) $
+ * @version $Rev: 2352 $, $Date: 2010-08-26 12:13:14 +0900 (Thu, 26 Aug 2010) $
  *
  */
 class NioServerSocketPipelineSink extends AbstractChannelSink {
@@ -153,12 +153,11 @@ class NioServerSocketPipelineSink extends AbstractChannelSink {
 
             Executor bossExecutor =
                 ((NioServerSocketChannelFactory) channel.getFactory()).bossExecutor;
-            bossExecutor.execute(
-                    new IoWorkerRunnable(
-                            new ThreadRenamingRunnable(
-                                    new Boss(channel),
-                                    "New I/O server boss #" + id +
-                                    " (" + channel + ')')));
+            DeadLockProofWorker.start(
+                    bossExecutor,
+                    new ThreadRenamingRunnable(
+                            new Boss(channel),
+                            "New I/O server boss #" + id + " (" + channel + ')'));
             bossStarted = true;
         } catch (Throwable t) {
             future.setFailure(t);

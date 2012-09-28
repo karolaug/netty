@@ -96,10 +96,9 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  * the {@code decode(..)} method again when more data is received into the
  * buffer.
  * <p>
- * Please note that the overhead of throwing an {@link Error} is minimal unlike
- * throwing a new {@link Exception} in an ordinary way. {@link ReplayingDecoder}
- * reuses the same {@link Error} instance so that it does not need to fill its
- * stack trace, which takes most of {@link Exception} initialization time.
+ * Please note that {@link ReplayingDecoder} always throws the same cached
+ * {@link Error} instance to avoid the overhead of creating a new {@link Error}
+ * and filling its stack trace for every throw.
  *
  * <h3>Limitations</h3>
  * <p>
@@ -284,7 +283,7 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2358 $, $Date: 2010-08-30 08:03:31 +0200 (Mon, 30 Aug 2010) $
+ * @version $Rev: 2380 $, $Date: 2010-11-09 14:35:24 +0900 (Tue, 09 Nov 2010) $
  *
  * @param <T>
  *        the state type; use {@link VoidEnum} if state management is unused
@@ -504,11 +503,11 @@ public abstract class ReplayingDecoder<T extends Enum<T>>
             }
 
             // A successful decode
-            unfoldAndfireMessageReceived(context, result, remoteAddress);
+            unfoldAndFireMessageReceived(context, result, remoteAddress);
         }
     }
 
-    private void unfoldAndfireMessageReceived(
+    private void unfoldAndFireMessageReceived(
             ChannelHandlerContext context, Object result, SocketAddress remoteAddress) {
         if (unfold) {
             if (result instanceof Object[]) {
@@ -547,7 +546,7 @@ public abstract class ReplayingDecoder<T extends Enum<T>>
             // notify a user that the connection was closed explicitly.
             Object partiallyDecoded = decodeLast(ctx, e.getChannel(), replayable, state);
             if (partiallyDecoded != null) {
-                unfoldAndfireMessageReceived(ctx, partiallyDecoded, null);
+                unfoldAndFireMessageReceived(ctx, partiallyDecoded, null);
             }
         } catch (ReplayError replay) {
             // Ignore

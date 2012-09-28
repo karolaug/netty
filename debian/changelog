@@ -1,8 +1,35 @@
-netty (1:3.2.3.Final-1) unstable; urgency=low
+netty (1:3.2.6.Final-2) unstable; urgency=low
 
-  * New upstream version
+  * Merge from James Page (thanks!):
+  * Enable test suite to support Ubuntu MIR (LP: #913878) (Closes: #658250):
+    - d/build.xml: Add extra targets to compile and execute unit tests.
+    - d/rules: Add testing dependencies to build classpath.
+    - d/control: Added junit4 and libeasymock-java to BDI's and ant-optional
+      to BD's.
+  * d/orig-tar.sh; Dropped - not used.
 
- -- Zbigniew Jędrzejewski-Szmek <zbyszek@in.waw.pl>  Tue, 04 Oct 2011 16:29:16 +0200
+ -- Damien Raude-Morvan <drazzib@debian.org>  Sun, 12 Feb 2012 12:43:50 +0100
+
+netty (1:3.2.6.Final-1) unstable; urgency=low
+
+  * New upstream release (Closes: #643832):
+    - Update watch file for github.
+  * Add myself to Uploaders.
+  * Use maven-repo-helper to install jar.
+  * Bump to Standards-Version to 3.9.2:
+    - Provide a get-orig-source target.
+    - Drop Depends on default-jre-headless.
+    - Drop XSBC-* fields (Ubuntu specific)
+    - Add Homepage field.
+    - Add Vcs-* fields.
+  * Use debhelper 7 compat level.
+  * Fix copyright:
+    - now under Apache-2.0 licence.
+    - update to DEP-5.
+  * Switch to 3.0 (quilt) source format.
+  * Add Recommends on logging frameworks.
+
+ -- Damien Raude-Morvan <drazzib@debian.org>  Wed, 23 Nov 2011 21:14:19 +0100
 
 netty (1:3.1.0.CR1-1) unstable; urgency=low
 

@@ -71,6 +71,7 @@ import org.jboss.netty.channel.socket.ServerSocketChannel;
  * <td>{@code "channelOpen"}</td>
  * <td>{@link ChannelStateEvent}<br/>(state = {@link ChannelState#OPEN OPEN}, value = {@code true})</td>
  * <td>a {@link Channel} is open, but not bound nor connected</td>
+ * <td><strong>Be aware that this event is fired from within the Boss-Thread so you should not execute any heavy operation in there as it will block the dispatching to other workers!</strong></td>
  * </tr>
  * <tr>
  * <td>{@code "channelClosed"}</td>
@@ -80,7 +81,8 @@ import org.jboss.netty.channel.socket.ServerSocketChannel;
  * <tr>
  * <td>{@code "channelBound"}</td>
  * <td>{@link ChannelStateEvent}<br/>(state = {@link ChannelState#BOUND BOUND}, value = {@link SocketAddress})</td>
- * <td>a {@link Channel} is open and bound to a local address, but not connected</td>
+ * <td>a {@link Channel} is open and bound to a local address, but not connected.</td>
+ * <td><strong>Be aware that this event is fired from within the Boss-Thread so you should not execute any heavy operation in there as it will block the dispatching to other workers!</strong></td>
  * </tr>
  * <tr>
  * <td>{@code "channelUnbound"}</td>
@@ -91,6 +93,7 @@ import org.jboss.netty.channel.socket.ServerSocketChannel;
  * <td>{@code "channelConnected"}</td>
  * <td>{@link ChannelStateEvent}<br/>(state = {@link ChannelState#CONNECTED CONNECTED}, value = {@link SocketAddress})</td>
  * <td>a {@link Channel} is open, bound to a local address, and connected to a remote address</td>
+ * <td><strong>Be aware that this event is fired from within the Boss-Thread so you should not execute any heavy operation in there as it will block the dispatching to other workers!</strong></td>
  * </tr>
  * <tr>
  * <td>{@code "writeComplete"}</td>
@@ -179,7 +182,7 @@ import org.jboss.netty.channel.socket.ServerSocketChannel;
  * @author <a href="http://www.jboss.org/netty/">The Netty Project</a>
  * @author <a href="http://gleamynode.net/">Trustin Lee</a>
  *
- * @version $Rev: 2080 $, $Date: 2010-01-26 10:04:19 +0100 (Tue, 26 Jan 2010) $
+ * @version $Rev: 2080 $, $Date: 2010-01-26 18:04:19 +0900 (Tue, 26 Jan 2010) $
  *
  * @apiviz.landmark
  * @apiviz.composedOf org.jboss.netty.channel.ChannelFuture
