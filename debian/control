@@ -1,8 +1,7 @@
 Source: netty
 Section: java
 Priority: optional
-Maintainer: Chris Grzegorczyk <grze@eucalyptus.com>
-DM-Upload-Allowed: yes
+Maintainer: Karol Auguštin <karol@augustin.pl>
 Uploaders: Graziano Obertelli <graziano@eucalyptus.com>,
            Kyo Lee <kyo.lee@eucalyptus.com>,
            Damien Raude-Morvan <drazzib@debian.org>
